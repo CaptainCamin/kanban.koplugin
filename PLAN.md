@@ -231,10 +231,15 @@ list exists in `cards`. Indexes are clamped to the valid range.
   `phase5-add-card-reader.png`, `phase5-open-reader.png`.
 
 ### Phase 6: Device pass
-- [ ] Test on at least one real e-ink device. Check refresh and ghosting, that tap
+- [x] Test on at least one real e-ink device. Check refresh and ghosting, that tap
       targets are at least about 8 mm, and keyboard-only navigation on devices with
       buttons (`FocusManager` / key events for the board view).
 - **Done when:** the problems found are fixed or recorded as known issues in README.
+- **Done (2026-10-25):** the owner tested the plugin on their e-ink device. Two
+  problems were found and fixed in `651e2fa`: ghosting when the board opens (now a
+  full refresh), and the column dialog closing after every move (now it stays open).
+  Keyboard-only navigation was not tested; the board only handles Back and the
+  page-turn keys. Record that as a known issue in the README.
 
 ### Phase 7: Release
 - [ ] README: features, installation, screenshots, data file location.
