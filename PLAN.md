@@ -150,18 +150,38 @@ list exists in `cards`. Indexes are clamped to the valid range.
   (`rg 'require' kanban.koplugin/model.lua` shows nothing KOReader-specific).
 
 ### Phase 3: Read-only board view
-- [ ] `boardview.lua`: a full-screen `InputContainer` with a `TitleBar` (board name,
+- [x] `boardview.lua`: a full-screen `InputContainer` with a `TitleBar` (board name,
       left menu button, close button) and a body: a `HorizontalGroup` of columns. Each
       column is a header and then fixed-height card frames (`FrameContainer` +
       `TextBoxWidget`, titles cut to 3 lines).
-- [ ] Columns per screen: `max(1, floor(screen_width / min_col_width))`, capped at 3.
+- [x] Columns per screen: `max(1, floor(screen_width / min_col_width))`, capped at 3.
       Swipe east/west moves between column pages. Swipe north/south pages the cards in
-      the column under the finger. A footer shows "Columns 1–3 of 5".
-- [ ] Rebuild the layout when the screen is rotated (`onScreenResize` /
+      the column under the finger. A footer shows "‹ Columns 1–3 of 5 ›"; the chevrons are tappable
+      and dimmed when there are no more columns that way.
+- [x] Rebuild the layout when the screen is rotated (`onScreenResize` /
       `onSetRotationMode`).
 - **Done when:** emulator screenshots look right for portrait, landscape, an empty
   column, a column with more cards than fit on one page, and a very long title.
   Screenshots go in `.amp/in/artifacts/`.
+- **Verified (2026-10-25, KOReader v2026.07.1):** Tools → Kanban board opens the
+  board from File Manager and Reader, loading the state with `storage.lua`. With a
+  seeded 5-column board (14 cards in Ideas, empty Blocked, one very long title),
+  inspected captures: `.amp/in/artifacts/phase3-portrait.png` (600×800, 2 columns,
+  6 cards per column), `phase3-landscape.png` (800×600, 3 columns, 4 cards),
+  `phase3-empty-column.png`, `phase3-card-paging.png` (Ideas 1–6, 7–12, 13–14 while
+  To Do stays put) and `phase3-long-title.png` (cut to 3 lines with "…"). Swipes,
+  window resize (`ScreenResize`) and `SetRotationMode` 1 → 0 (sent through
+  httpinspector, from both File Manager and Reader) rebuild the layout, and the
+  underlying File Manager / Reader is laid out correctly after closing. No errors in
+  `crash.log`. `busted` passes.
+- **Orb capture notes:** the Desktop output is 1280×720, which clips a 600×800 window
+  (KOReader then resizes itself to 600×693). Run `wlr-randr --output HEADLESS-1
+  --custom-mode 1280x960` first, and drive the emulator with `xdotool` (a mouse drag is
+  a swipe) and `import -window`. Captures taken in landscape show the unrotated
+  framebuffer; rotate them 90°. Gestures and hotkeys don't reach File Manager while the
+  board covers it, so send rotation with httpinspector
+  (`"httpinspector": {autostart = true}` in `settings.reader.lua`, then
+  `curl localhost:8080/koreader/event/SetRotationMode/1`).
 
 ### Phase 4: Editing
 - [ ] Tap a card to open a `ButtonDialog`: Edit, Move to…, Move up, Move down,
@@ -217,3 +237,19 @@ list exists in `cards`. Indexes are clamped to the valid range.
   "tools"` (not the example plugin's `"more_tools"`) for the top-level Tools entry.
   `_meta.lua` has no `name` field, because current KOReader ignores it and logs a
   deprecation warning.
+- 2026-10-25: Phase 3 board layout: minimum column width `Screen:scaleBySize(240)`
+  (2 columns in 600 px portrait, 3 in 800 px landscape), cards are fixed at 3 title
+  lines (`TextBoxWidget` with `height_overflow_show_ellipsis`). Column pages start at
+  multiples of the columns per screen, so the last page can be short; it stays left-
+  aligned. After a rotation, the page that holds the previous leftmost column is shown.
+  Each column keeps its own card offset; swipe north shows later cards, south earlier.
+- 2026-10-25: The title bar's menu button is present but does nothing until phase 4
+  adds the board menu. The board view also closes with the Back key and pages columns
+  with the page-turn keys; full keyboard navigation stays in phase 6.
+- 2026-10-25: Rotation follows `Menu:onSetRotationMode`: the board asks the
+  underlying FileManager (`ui:onSetRotationMode`) or ReaderUI (`ui.view:
+  onSetRotationMode`) to rotate, then rebuilds itself. On devices this event comes
+  from the accelerometer, which sends it to the top widget.
+- 2026-10-25: The column footer has ‹ › chevron buttons, built like `Menu`'s page
+  footer (`chevron.left`/`chevron.right`, mirrored for RTL, `enableDisable`), so it's
+  visible that more columns are a swipe away and they can be reached by tapping.

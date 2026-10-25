@@ -1,4 +1,5 @@
-local InfoMessage = require("ui/widget/infomessage")
+local BoardView = require("boardview")
+local Storage = require("storage")
 local UIManager = require("ui/uimanager")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local _ = require("gettext")
@@ -17,8 +18,9 @@ function Kanban:addToMainMenu(menu_items)
         text = _("Kanban board"),
         sorting_hint = "tools",
         callback = function()
-            UIManager:show(InfoMessage:new{
-                text = _("Kanban board is ready. Board features are coming soon."),
+            UIManager:show(BoardView:new{
+                state = Storage.load(),
+                ui = self.ui,
             })
         end,
     }
