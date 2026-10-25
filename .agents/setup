@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+missing_packages=()
+command -v luajit >/dev/null 2>&1 || missing_packages+=(luajit)
+command -v luarocks >/dev/null 2>&1 || missing_packages+=(luarocks)
+command -v busted >/dev/null 2>&1 || missing_packages+=(lua-busted)
+
+if ((${#missing_packages[@]})); then
+    apt_get=(apt-get)
+    if ((EUID != 0)); then
+        apt_get=(sudo apt-get)
+    fi
+
+    echo "Installing Lua test tooling: ${missing_packages[*]}"
+    "${apt_get[@]}" update
+    "${apt_get[@]}" install -y "${missing_packages[@]}"
+else
+    echo "Lua test tooling is already installed"
+fi

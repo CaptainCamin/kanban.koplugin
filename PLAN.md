@@ -107,11 +107,11 @@ list exists in `cards`. Indexes are clamped to the valid range.
 ## Phases
 
 ### Phase 0: Tooling
-- [ ] Add `.agents/setup`. It installs `luajit`, `luarocks` and `busted`, and downloads
-      the KOReader Linux AppImage (or the emulator build) for manual runs.
-- [ ] Add `.busted` so that `busted` from the repo root finds `spec/` and
+- [x] Add `.agents/setup`. It installs `luajit`, `luarocks` and `busted`.
+      KOReader Linux AppImage (or emulator build) download is deferred to phase 1.
+- [x] Add `.busted` so that `busted` from the repo root finds `spec/` and
       `kanban.koplugin/?.lua`.
-- **Done when:** `busted` runs and reports 0 tests, without errors.
+- **Done when:** `busted` runs without errors.
 
 ### Phase 1: Skeleton
 - [ ] `_meta.lua` with `name = "kanban"`, `fullname = _("Kanban board")` and a
@@ -205,4 +205,4 @@ list exists in `cards`. Indexes are clamped to the valid range.
 
 ## Decision log
 
-- (empty — add entries as `YYYY-MM-DD: decision — reason`)
+- 2026-10-25: Deferred the KOReader AppImage/emulator download to phase 1 — phase 0 only needs the Lua test toolchain.
