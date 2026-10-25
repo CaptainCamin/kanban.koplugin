@@ -5,6 +5,8 @@ missing_packages=()
 command -v luajit >/dev/null 2>&1 || missing_packages+=(luajit)
 command -v luarocks >/dev/null 2>&1 || missing_packages+=(luarocks)
 command -v busted >/dev/null 2>&1 || missing_packages+=(lua-busted)
+command -v curl >/dev/null 2>&1 || missing_packages+=(curl)
+command -v jq >/dev/null 2>&1 || missing_packages+=(jq)
 
 if ((${#missing_packages[@]})); then
     apt_get=(apt-get)
@@ -12,9 +14,32 @@ if ((${#missing_packages[@]})); then
         apt_get=(sudo apt-get)
     fi
 
-    echo "Installing Lua test tooling: ${missing_packages[*]}"
+    echo "Installing setup dependencies: ${missing_packages[*]}"
     "${apt_get[@]}" update
     "${apt_get[@]}" install -y "${missing_packages[@]}"
 else
-    echo "Lua test tooling is already installed"
+    echo "Setup dependencies are already installed"
 fi
+
+# Keep downloads outside the checkout. GitHub's latest release excludes prereleases.
+cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/koreader"
+mkdir -p "$cache_dir"
+release=$(curl -fsSL --retry 2 https://api.github.com/repos/koreader/koreader/releases/latest)
+appimage_url=$(jq -er '.assets[] | select(.name | endswith("-x86_64.AppImage")) | .browser_download_url' <<<"$release")
+appimage="$cache_dir/${appimage_url##*/}"
+install_dir="${appimage%.AppImage}"
+
+if [[ ! -f "$appimage" ]]; then
+    echo "Downloading ${appimage##*/}"
+    curl -fL --retry 2 "$appimage_url" -o "$appimage.part"
+    mv "$appimage.part" "$appimage"
+fi
+chmod +x "$appimage"
+
+if [[ ! -x "$install_dir/squashfs-root/AppRun" ]]; then
+    echo "Extracting KOReader (no FUSE required)"
+    mkdir -p "$install_dir"
+    (cd "$install_dir" && "$appimage" --appimage-extract > extract.log)
+fi
+ln -sfn "$install_dir/squashfs-root" "$cache_dir/current"
+echo "KOReader is ready: $cache_dir/current/AppRun"

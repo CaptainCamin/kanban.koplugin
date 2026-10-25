@@ -1,5 +1,0 @@
-describe("kanban plugin test environment", function()
-    it("runs specs from the repository root", function()
-        assert.is_true(true)
-    end)
-end)
