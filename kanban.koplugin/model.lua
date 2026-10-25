@@ -119,10 +119,21 @@ function Model.renameBoard(state, board_id, name)
     return true
 end
 
+function Model.selectBoard(state, board_id)
+    if not find_board(state, board_id) then
+        return nil, "board not found"
+    end
+    state.current_board = board_id
+    return true
+end
+
 function Model.deleteBoard(state, board_id)
     local _, index = find_board(state, board_id)
     if not index then
         return nil, "board not found"
+    end
+    if #state.boards == 1 then
+        return nil, "cannot delete the last board"
     end
     table.remove(state.boards, index)
     if state.current_board == board_id then

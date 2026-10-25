@@ -184,16 +184,35 @@ list exists in `cards`. Indexes are clamped to the valid range.
   `curl localhost:8080/koreader/event/SetRotationMode/1`).
 
 ### Phase 4: Editing
-- [ ] Tap a card to open a `ButtonDialog`: Edit, Move to…, Move up, Move down,
+- [x] Tap a card to open a `ButtonDialog`: Edit, Move to…, Move up, Move down,
       Archive, Cancel. "Move to…" lists the other columns as buttons.
-- [ ] Hold a card for quick-move: the card is highlighted and the next tap on a column
+- [x] Hold a card for quick-move: the card is highlighted and the next tap on a column
       header moves it there. Tapping anywhere else cancels.
-- [ ] Tap a column header for: Add card, Rename, Move left, Move right, Delete.
-- [ ] Title bar menu: Add column, Archived cards (a list with Restore), Boards…
+- [x] Tap a column header for: Add card, Rename, Move left, Move right, Delete.
+- [x] Title bar menu: Add column, Archived cards (a list with Restore), Boards…
       (switch, new, rename, delete).
-- [ ] The card editor is a `MultiInputDialog` with title and notes fields.
+- [x] The card editor is a `MultiInputDialog` with title and notes fields.
 - **Done when:** in the emulator, each action works, the view repaints correctly, and
   every change is still there after restarting KOReader.
+- **Verified (2026-10-25, KOReader v2026.07.1, 600×800):** on a seeded 4-column
+  board, every action was run in the emulator: card Edit (multi-line notes), Move to…
+  (to a column on another page), Move up/down, Archive; quick-move drop onto a header
+  on another column page and cancel by tapping elsewhere; column Add card, Rename,
+  Move left/right, Delete (with confirmation, cards archived); ☰ Add column, Archived
+  cards → Restore into a chosen column, Boards… switch/new/rename/delete (with
+  confirmation). Empty titles and names are refused with a message. After
+  `amp orb service restart koreader` the board, column order, edits, archive and the
+  last selected board (`current_board`) were all still there. No errors in
+  `crash.log`; `busted` passes (13 tests). Inspected captures in
+  `.amp/in/artifacts/`: `phase4-card-actions.png`, `phase4-move-to.png`,
+  `phase4-quick-move.png`, `phase4-card-editor.png`, `phase4-column-actions.png`,
+  `phase4-delete-column-confirm.png`, `phase4-board-menu.png`, `phase4-archive.png`,
+  `phase4-boards.png`.
+- **Orb notes:** the plugin's data file is `~/.config/koreader/settings/kanban.lua`
+  (`DataStorage:getSettingsDir()`), not `~/.config/koreader/kanban.lua`. httpinspector
+  autostart needs an explicit `port` in its settings table, or KOReader crashes on start.
+  Tools → Kanban board is on page 2 of the Tools tab, and the menu reopens on the last
+  tab/page, so capture before each tap instead of replaying fixed coordinates.
 
 ### Phase 5: Integration
 - [ ] Register Dispatcher actions in `main.lua`: `kanban_open` ("Open Kanban board")
@@ -244,12 +263,34 @@ list exists in `cards`. Indexes are clamped to the valid range.
   aligned. After a rotation, the page that holds the previous leftmost column is shown.
   Each column keeps its own card offset; swipe north shows later cards, south earlier.
 - 2026-10-25: The title bar's menu button is present but does nothing until phase 4
-  adds the board menu. The board view also closes with the Back key and pages columns
+  adds the board menu (done in phase 4). The board view also closes with the Back key and pages columns
   with the page-turn keys; full keyboard navigation stays in phase 6.
 - 2026-10-25: Rotation follows `Menu:onSetRotationMode`: the board asks the
   underlying FileManager (`ui:onSetRotationMode`) or ReaderUI (`ui.view:
   onSetRotationMode`) to rotate, then rebuilds itself. On devices this event comes
   from the accelerometer, which sends it to the top widget.
+- 2026-10-25: Phase 4 model changes: added `Model.selectBoard(state, id)` (switching
+  boards goes through the model and is saved), and `deleteBoard` refuses to delete the
+  last board, so the board view always has a board. The Boards dialog disables Delete
+  when only one board is left.
+- 2026-10-25: Every edit goes through `BoardView:commit(change, after, refresh)`:
+  `change` calls one Model function; on success the state is saved with
+  `Storage.save()` right away and the view is rebuilt (`"ui"` refresh, `"flashui"`
+  when the board changes). On failure, it logs and shows an `InfoMessage`. After an
+  add, move or restore the view pages to where the card landed.
+- 2026-10-25: Quick-move highlight for grayscale: the picked card gets a 4 px border,
+  a light-gray fill and bold title; every column it can go to has its header inverted
+  (black bar, white text and badge); the footer reads "Tap a column header to move the
+  card". Headers are tap targets in all modes. Hold does nothing on a one-column board.
+  Tapping the card's own column, anywhere else, or ☰ cancels.
+- 2026-10-25: Card actions show the card's title in bold and its notes (first 300
+  characters) below it. Disabled actions (Move up on the first card, Move left on the
+  first column, Move to… on a one-column board) are grayed out, not hidden.
+- 2026-10-25: Card editor: Enter in the title field saves; the notes field
+  (`allow_newline`) takes new lines. New cards go to the end of the column.
+- 2026-10-25: Archived cards lists newest first; tapping a card asks which column to
+  restore it to (appended at the end). Deleting a board deletes its archived cards too,
+  and the confirmation says so; deleting a column archives its cards (as before).
 - 2026-10-25: The column footer has ‹ › chevron buttons, built like `Menu`'s page
   footer (`chevron.left`/`chevron.right`, mirrored for RTL, `enableDisable`), so it's
   visible that more columns are a swipe away and they can be reached by tapping.
