@@ -215,12 +215,20 @@ list exists in `cards`. Indexes are clamped to the valid range.
   tab/page, so capture before each tap instead of replaying fixed coordinates.
 
 ### Phase 5: Integration
-- [ ] Register Dispatcher actions in `main.lua`: `kanban_open` ("Open Kanban board")
+- [x] Register Dispatcher actions in `main.lua`: `kanban_open` ("Open Kanban board")
       and `kanban_add_card` ("Add Kanban card"), with handlers `onKanbanOpen` and
       `onKanbanAddCard`.
-- [ ] Reopen the board the user had open last (`current_board`).
+- [x] Reopen the board the user had open last (`current_board`). Already done by
+      phase 4, which saves `current_board` when switching boards.
 - **Done when:** a gesture bound to these actions in Gesture manager works from both
   File Manager and Reader.
+- **Verified (2026-10-25, KOReader v2026.07.1):** with `kanban_open` bound to
+  `tap_left_bottom_corner` and `kanban_add_card` to `tap_right_bottom_corner` in
+  `settings/gestures.lua` (both `gesture_fm` and `gesture_reader`), each gesture opened
+  the board or the new-card editor in File Manager and in Reader, and cards added
+  through the editor were saved and appeared in the first column. No errors in
+  `crash.log`. Captures: `.amp/in/artifacts/phase5-open-fm.png`,
+  `phase5-add-card-reader.png`, `phase5-open-reader.png`.
 
 ### Phase 6: Device pass
 - [ ] Test on at least one real e-ink device. Check refresh and ghosting, that tap
@@ -294,3 +302,9 @@ list exists in `cards`. Indexes are clamped to the valid range.
 - 2026-10-25: The column footer has ‹ › chevron buttons, built like `Menu`'s page
   footer (`chevron.left`/`chevron.right`, mirrored for RTL, `enableDisable`), so it's
   visible that more columns are a swipe away and they can be reached by tapping.
+- 2026-10-25: "Add Kanban card" builds a `BoardView` without showing it and passes it
+  to `CardDialog.editCard`, so the card is saved through the same `commit()` path as
+  every other edit.
+- 2026-10-25: Don't give phases that need screenshot checks to Amp's `low` mode: its
+  model can't accept images, and once a screenshot is in the thread every request
+  fails.
