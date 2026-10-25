@@ -305,6 +305,9 @@ list exists in `cards`. Indexes are clamped to the valid range.
 - 2026-10-25: "Add Kanban card" builds a `BoardView` without showing it and passes it
   to `CardDialog.editCard`, so the card is saved through the same `commit()` path as
   every other edit.
+- 2026-10-25: From the owner's first device test: opening the board uses a "full"
+  refresh to clear ghosting, and Move left/right in the column dialog reopens the
+  dialog so a column can be moved several places (its last button is now "Close").
 - 2026-10-25: Don't give phases that need screenshot checks to Amp's `low` mode: its
   model can't accept images, and once a screenshot is in the thread every request
   fails.

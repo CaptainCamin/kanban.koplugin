@@ -256,10 +256,13 @@ function CardDialog.showColumnActions(view, column_id)
             fn()
         end
     end
+    -- Reopen the dialog after a move so the column can be moved again.
     local function move(to)
-        view:commit(function() return Model.moveColumn(board, column_id, to) end, function()
+        if view:commit(function() return Model.moveColumn(board, column_id, to) end, function()
             view:revealColumn(to)
-        end)
+        end) then
+            CardDialog.showColumnActions(view, column_id)
+        end
     end
     dialog = showDialog(ButtonDialog:new{
         title = T(N_("%1 · 1 card", "%1 · %2 cards", #column.cards), column.name, #column.cards),
@@ -322,7 +325,7 @@ function CardDialog.showColumnActions(view, column_id)
                     end),
                 },
                 {
-                    text = _("Cancel"),
+                    text = _("Close"),
                     callback = action(function() end),
                 },
             },

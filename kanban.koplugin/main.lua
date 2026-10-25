@@ -34,12 +34,13 @@ function Kanban:onDispatcherRegisterActions()
     })
 end
 
--- Open the board view, same as the Tools menu entry.
+-- Open the board view, from the Tools menu entry or the Dispatcher action.
+-- A full refresh clears the File Manager or page underneath from the e-ink screen.
 function Kanban:onKanbanOpen()
     UIManager:show(BoardView:new{
         state = Storage.load(),
         ui = self.ui,
-    })
+    }, "full")
     return true
 end
 
@@ -71,12 +72,7 @@ function Kanban:addToMainMenu(menu_items)
     menu_items.kanban = {
         text = _("Kanban board"),
         sorting_hint = "tools",
-        callback = function()
-            UIManager:show(BoardView:new{
-                state = Storage.load(),
-                ui = self.ui,
-            })
-        end,
+        callback = function() self:onKanbanOpen() end,
     }
 end
 
