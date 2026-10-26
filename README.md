@@ -15,11 +15,18 @@ boards, columns, and cards. Cards are not linked to books.
   cards rather than deleting them.
 - Create, switch between, rename, and delete multiple boards. Tap the board name
   (marked ▼) in the title bar to open the Boards dialog.
-- Open the board from **Tools → Kanban board** in both the File Manager and
-  Reader, or bind either of these actions in Gesture manager:
+- Open the board from **Tools → Kanban board → Open board** in both the File
+  Manager and Reader, or bind any of these actions in Gesture manager:
   - **Open Kanban board**
   - **Add Kanban card** (opens the card editor for the first column of the
     currently selected board)
+  - **Kanban: Today**
+- **Today** (board menu ☰, or the gesture above) lists the cards in every
+  board's in-progress column, grouped by board. The in-progress column is the
+  second-to-last column unless you pick another in its column dialog.
+- **Show board on sleep screen** (Tools → Kanban board) shows the current board
+  as the sleep screen. Turning it off restores your previous sleep screen
+  settings.
 - Board layout adapts when the screen rotates. On devices without an
   accelerometer, **Rotate screen** in the board menu (☰) switches between
   portrait and landscape. Swipe to navigate column pages

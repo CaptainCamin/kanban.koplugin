@@ -2,6 +2,7 @@ local BoardView = require("boardview")
 local CardDialog = require("carddialog")
 local Dispatcher = require("dispatcher")
 local InfoMessage = require("ui/widget/infomessage")
+local SleepScreen = require("sleepscreen")
 local Storage = require("storage")
 local TodayView = require("todayview")
 local UIManager = require("ui/uimanager")
@@ -15,7 +16,13 @@ local Kanban = WidgetContainer:extend{
 
 function Kanban:init()
     self:onDispatcherRegisterActions()
+    SleepScreen.restoreUserSettings()
+    SleepScreen.installScreensaverHook()
     self.ui.menu:registerToMainMenu(self)
+end
+
+function Kanban:onResume()
+    SleepScreen.restoreUserSettings()
 end
 
 -- Register Dispatcher actions so they can be bound to gestures in the Gesture
@@ -88,7 +95,21 @@ function Kanban:addToMainMenu(menu_items)
     menu_items.kanban = {
         text = _("Kanban board"),
         sorting_hint = "tools",
-        callback = function() self:onKanbanOpen() end,
+        keep_menu_open = true,
+        sub_item_table = {
+            {
+                text = _("Open board"),
+                callback = function() self:onKanbanOpen() end,
+            },
+            {
+                text = _("Show board on sleep screen"),
+                checked_func = SleepScreen.isEnabled,
+                keep_menu_open = true,
+                callback = function()
+                    SleepScreen.setEnabled(not SleepScreen.isEnabled())
+                end,
+            },
+        },
     }
 end
 

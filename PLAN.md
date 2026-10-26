@@ -330,11 +330,21 @@ list exists in `cards`. Indexes are clamped to the valid range.
 ### Phase 13: Now card and sleep screen
 - [ ] D2: pin one card as "Now" (card actions). It shows above the columns in bold;
       unpin from the same place. One per board.
-- [ ] D1: opt-in "Show board on sleep screen" setting. On suspend, render the current
+- [x] D1: opt-in "Show board on sleep screen" setting. On suspend, render the current
       board (or the Now card, if set) to a PNG in the settings dir and point the
       screensaver at it, the way Screenshoter's "Set as book cover" does
       (`screensaver_type` / `screensaver_document_cover`). Turning it off restores the
       user's previous screensaver settings.
+- **Verified (2026-10-26, KOReader v2026.07.1 Emulator, 600×800):** with D1 enabled,
+  F2 suspend from File Manager showed the rendered board image; F2 suspend while the
+  board was open showed the sleep image, and resuming returned to the still-open board.
+  Disabling the option restored `screensaver_type = "disable"` and the previously
+  absent `screensaver_document_cover`; another suspend did not show the board image.
+  No errors in `~/.config/koreader/crash.log`; `busted` passes. Inspected captures:
+  `.amp/in/artifacts/phase13-sleep-filemanager.png`,
+  `phase13-sleep-board-open.png`, `phase13-sleep-board-resumed.png`,
+  `phase13-sleep-setting-off.png`, `phase13-sleep-setting-off-suspend.png`, and
+  `phase13-sleep-resumed.png`. The owner still needs to check this on a device.
 - **Done when:** the setting works in the emulator's suspend flow, the previous
   screensaver settings come back when it's turned off, and the owner checks it on
   their device.
@@ -495,3 +505,12 @@ Ideas the owner wants to keep but not build yet:
   a card selects its board, opens the board at that card's column page, then shows the
   existing card actions dialog. When Today was opened from a board's menu, that board
   view is closed first so board views don't stack.
+- 2026-10-26: D1 renders a fresh `BoardView` into an off-screen grayscale Blitbuffer
+  instead of capturing the visible screen, so the sleep image tracks board layout
+  changes without modifying `boardview.lua`. KOReader calls `Screensaver.setup()`
+  before the later `Suspend` broadcast, so rendering and the temporary
+  `screensaver_type = "document_cover"` / `screensaver_document_cover` override happen
+  in a `Screensaver.setup` hook, before the native screensaver reads them. The prior
+  values of both keys (including a key that was absent) are restored on resume,
+  startup, or when the option is turned off. The emulator pass is complete, but the
+  owner still needs to check D1 on a device.
