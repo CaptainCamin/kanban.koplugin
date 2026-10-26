@@ -243,8 +243,8 @@ list exists in `cards`. Indexes are clamped to the valid range.
   page-turn keys. Record that as a known issue in the README.
 
 ### Phase 7: Release
-- [ ] README: features, installation, screenshots, data file location.
-- [ ] A script that zips `kanban.koplugin/` into `kanban.koplugin.zip`.
+- [x] README: features, installation, screenshots, data file location.
+- [x] A script that zips `kanban.koplugin/` into `kanban.koplugin.zip` (`package.sh`).
 - [ ] Optional: export a board to Markdown in the home folder. (Moved to phase 14.)
 - **Done when:** installing from the zip on a clean KOReader works.
 
@@ -428,3 +428,5 @@ Ideas the owner wants to keep but not build yet:
 - 2026-10-26: The board menu has "Rotate screen" for devices without an accelerometer.
   It switches between portrait and landscape (like KOReader's `SwapRotation`), not
   through all four rotations.
+- 2026-10-26: Amp's `low` mode now uses GPT-6 Luna, which accepts images, so the
+  2026-10-25 rule against giving it screenshot phases no longer applies.
