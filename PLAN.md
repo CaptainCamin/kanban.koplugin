@@ -384,6 +384,26 @@ Ideas the owner wants to keep but not build yet:
   copied into its `plugins/` directory, then follow the phase's acceptance criteria.
   Check `crash.log` afterwards.
 - For any UI change, capture and inspect screenshots of every affected state.
+- Verify only what your phase changed. Checks across several features are done once,
+  in a combined emulator pass after merging.
+- If a check needs fixing the environment rather than the plugin, try once, then skip
+  it and say why in your report. If a check is taking unusually long, tell the
+  coordinating thread in one line instead of digging further.
+
+### Emulator notes (orb)
+
+These add to the per-phase orb notes above.
+- There are two ways to run KOReader, and they behave differently:
+  - The **desktop build** (`AppRun`, with `KO_MULTIUSER=1`) keeps its settings in
+    `~/.config/koreader/settings/`. F2 does **not** suspend, so it can't test the
+    sleep screen.
+  - The **emulator build** keeps its settings next to the program, in
+    `~/.cache/koreader/current/usr/lib/koreader/settings/`. F2 suspends and resumes.
+    Seed `kanban.lua` (and any `kanban-sleepscreen.lua`) there, or the board comes up
+    empty.
+- Undo test state before finishing: `today_column` choices, the sleep-screen option
+  (turn it off from the UI so the screensaver settings are restored), and any data
+  files copied into the emulator build's settings folder.
 
 ## Decision log
 
