@@ -304,10 +304,10 @@ list exists in `cards`. Indexes are clamped to the valid range.
   and survives a restart, and model specs cover any new Model functions.
 
 ### Phase 10: Moving cards
-- [ ] B2: after hold-and-lift (today's quick-move), tapping a gap between cards drops
+- [x] B2: after hold-and-lift (today's quick-move), tapping a gap between cards drops
       the card there, and tapping a tab drops it at the end of that column. Headers keep
       working. Holding works on a one-column board too (reordering).
-- [ ] B1: drag, behind a "Drag to move" setting (default on). Hold a card, then slide:
+- [x] B1: drag, behind a "Drag to move" setting (default on). Hold a card, then slide:
       `hold_pan` events move a thick drop bar between gaps; the bar is redrawn only when
       it changes gap, with `"a2"` refresh on the old and new bar regions. Sliding onto a
       tab inverts it. `hold_release` drops through `commit()`, followed by one `"ui"`
@@ -316,6 +316,32 @@ list exists in `cards`. Indexes are clamped to the valid range.
 - **Done when:** in the emulator, drag within a column, to another column on screen and
   to a tab on another page all work, and cancel leaves the board unchanged. The owner
   tries it on their device and records how responsive it is.
+- **Verified (2026-10-26, KOReader v2026.07.1 Emulator, 600×800):** real mouse
+  hold/lift/tap reordered within a column, inserted between another column's cards,
+  appended through a tab, and filled an empty column. Drag reordered down and up,
+  inserted into the other visible column, and appended through the Done tab while
+  that column was on another page. Returning to the pickup card before lifting
+  cancelled with byte-identical saved state; lifting without moving (also with a
+  6×5 px wobble below the detector threshold) stayed selected for tap-to-drop.
+  With Drag to move off, sliding did not move the card or request any drag refresh;
+  header quick-move still appended it. The off setting survived restarting KOReader.
+  A one-column board supported both tap-to-drop and upward drag; its own header
+  cancelled without saving. The setting was restored to on through the menu.
+  `busted`: 24 successes; LuaJIT syntax checks pass; no errors or tracebacks in the
+  emulator's redirected `crash.log`. No Model functions or model specs were added.
+  Inspected captures in `.amp/in/artifacts/`: `phase10-before.png`,
+  `phase10-tap-{same-column,other-column,tab}.png`,
+  `phase10-drag-{bar,same-column,other-bar,other-column,tab-preview,tab}.png`,
+  `phase10-cancel-origin.png`, `phase10-hold-lift{,-drop}.png`,
+  `phase10-empty-column-drop.png`, `phase10-setting-{on,off}.png`,
+  `phase10-drag-disabled.png`, `phase10-header-quick-move.png`,
+  `phase10-off-after-restart.png`, and `phase10-one-column-{tap,preview,drag}.png`.
+  Recording was attempted once but X11 capture was black; used these inspected
+  before/during/after captures instead. `phase10-refresh-regions.log` records only
+  the old/new 282×6 bars (or the hovered tab) receiving `a2` during motion, no refresh
+  for movement in the same gap, and one `ui` refresh on release. Test board/options
+  files were removed from the emulator settings afterward. **The owner still needs
+  to try drag on an e-ink device and report responsiveness/ghosting.**
 
 ### Phase 11: Card detail (data model version 2)
 - [x] Schema version 2: cards gain `checklist = { { text, done } }`, `moved`; columns
@@ -560,3 +586,23 @@ These add to the per-phase orb notes above.
   tapping another tab reveals its column page, and long names are ellipsized while
   retaining the count. Quick-move keeps its existing prompt and chevrons instead of
   the tabs.
+- 2026-10-26: Phase 10 supersedes the old quick-move footer: keep column tabs visible
+  during pickup so they can accept end-of-column drops. Headers still append to
+  another column, and the picked card's own header still cancels. Holding is now
+  allowed with one column. Gaps are derived from painted card/header frames in
+  `cardmove.lua`, independent of card-list construction (including the future Add
+  card row); same-column insertion indexes account for removal of the source card.
+  Actual moves call the existing `commit()` unchanged; no-op drops/cancels do not
+  save or consume undo.
+- 2026-10-26: Checked bundled KOReader v2026.07.1
+  `frontend/device/gesturedetector.lua`: `hold_pan` uses current finger coordinates
+  and is emitted only when either axis reaches DPI-scaled `PAN_THRESHOLD` (35 at
+  base DPI); both stationary holds and hold-pans finish with `hold_release` at the
+  lift position. Rely on that detector threshold, not a competing plugin threshold.
+  Checked `frontend/ui/uimanager.lua`'s `setDirty(widget, refreshtype, refreshregion)`
+  contract: snap-preview overlays use `a2` with explicit old/new bar/tab rectangles,
+  only when the target changes; release uses the normal commit's one `ui` refresh.
+  The source card never follows the finger, and lifting back in its original frame
+  cancels. Drag off preserves hold-and-lift/tap-to-drop. Tools → Kanban board →
+  Drag to move defaults on and flushes `drag_to_move` to `kanban-options.lua` in
+  `DataStorage:getSettingsDir()`, following sleepscreen.lua's LuaSettings pattern.

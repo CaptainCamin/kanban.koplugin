@@ -2,6 +2,7 @@ local BD = require("ui/bidi")
 local Blitbuffer = require("ffi/blitbuffer")
 local Button = require("ui/widget/button")
 local CardDialog = require("carddialog")
+local CardMove = require("cardmove")
 local CenterContainer = require("ui/widget/container/centercontainer")
 local Device = require("device")
 local Font = require("ui/font")
@@ -14,7 +15,6 @@ local InfoMessage = require("ui/widget/infomessage")
 local InputContainer = require("ui/widget/container/inputcontainer")
 local LeftContainer = require("ui/widget/container/leftcontainer")
 local LineWidget = require("ui/widget/linewidget")
-local Model = require("model")
 local OverlapGroup = require("ui/widget/overlapgroup")
 local RightContainer = require("ui/widget/container/rightcontainer")
 local Size = require("ui/size")
@@ -87,6 +87,12 @@ function BoardView:layout()
         }
         self.ges_events.Hold = {
             GestureRange:new{ ges = "hold", range = self.dimen },
+        }
+        self.ges_events.HoldPan = {
+            GestureRange:new{ ges = "hold_pan", range = self.dimen },
+        }
+        self.ges_events.HoldRelease = {
+            GestureRange:new{ ges = "hold_release", range = self.dimen },
         }
     end
 
@@ -374,6 +380,7 @@ function BoardView:buildFooter(board, first, last)
     local row_height = Screen:scaleBySize(40)
     local row_items = {}
     local columns = board and board.columns or {}
+    self.tab_targets = {}
 
     local function addChevron(icon, enabled, callback, width)
         local button = Button:new{
@@ -392,23 +399,7 @@ function BoardView:buildFooter(board, first, last)
         table.insert(row_items, button)
     end
 
-    if self.moving_card and #columns > 0 then
-        local left, right = "chevron.left", "chevron.right"
-        if BD.mirroredUILayout() then
-            left, right = right, left
-        end
-        local arrow_width = Screen:scaleBySize(40)
-        local spacer = HorizontalSpan:new{ width = Screen:scaleBySize(20) }
-        addChevron(left, first > 1, function() self:onPrevColumns() end, arrow_width)
-        table.insert(row_items, spacer)
-        table.insert(row_items, TextWidget:new{
-            text = _("Tap a column header to move the card"),
-            face = Font:getFace("x_smallinfofont"),
-            bold = true,
-        })
-        table.insert(row_items, spacer)
-        addChevron(right, last < #columns, function() self:onNextColumns() end, arrow_width)
-    elseif #columns == 0 then
+    if #columns == 0 then
         table.insert(row_items, TextWidget:new{
             text = _("No columns"),
             face = Font:getFace("x_smallinfofont"),
@@ -469,11 +460,16 @@ function BoardView:buildFooter(board, first, last)
                 bordersize = Size.border.button,
                 preselect = index >= first and index <= last,
                 callback = function()
-                    self:revealColumn(index)
-                    self:refresh()
+                    if self.moving_card then
+                        CardMove.drop(self, { id = column.id })
+                    else
+                        self:revealColumn(index)
+                        self:refresh()
+                    end
                 end,
                 show_parent = self,
             }
+            table.insert(self.tab_targets, { frame = tab, id = column.id })
             table.insert(row_items, tab)
         end
 
@@ -604,26 +600,16 @@ end
 
 function BoardView:setMovingCard(card_id)
     self.moving_card = card_id
+    if not card_id then
+        self.drag_origin, self.dragging, self.drop_preview = nil, nil, nil
+    end
     self:layout()
     UIManager:setDirty(self, "ui")
 end
 
 function BoardView:onTap(_, ges)
     if self.moving_card then
-        local card_id = self.moving_card
-        local column_id = hit(self.header_targets, ges.pos)
-        local from = self:locateCard(card_id)
-        self.moving_card = nil
-        if column_id and from and column_id ~= from.id then
-            self:commit(function() return Model.moveCard(self:getBoard(), card_id, column_id) end, function()
-                self:revealCard(column_id, #self:findColumn(column_id).cards)
-            end)
-        else
-            -- Any other tap (including the card's own column) cancels.
-            self:layout()
-            UIManager:setDirty(self, "ui")
-        end
-        return true
+        return CardMove.drop(self, CardMove.target(self, ges.pos))
     end
     -- The title bar's icons are handled before this; the rest of the bar switches boards.
     local title_dimen = self.title_bar.dimen
@@ -646,12 +632,20 @@ function BoardView:onTap(_, ges)
 end
 
 function BoardView:onHold(_, ges)
-    local card_id = hit(self.card_targets, ges.pos)
-    if card_id and #self:getBoard().columns > 1 then
-        self:setMovingCard(card_id)
-        return true
-    end
-    return false
+    return CardMove.hold(self, ges.pos)
+end
+
+function BoardView:onHoldPan(_, ges)
+    return CardMove.pan(self, ges.pos)
+end
+
+function BoardView:onHoldRelease(_, ges)
+    return CardMove.release(self, ges.pos)
+end
+
+function BoardView:paintTo(bb, x, y)
+    InputContainer.paintTo(self, bb, x, y)
+    CardMove.paint(self, bb)
 end
 
 function BoardView:onSwipe(_, ges)

@@ -1,5 +1,6 @@
 local BoardView = require("boardview")
 local CardDialog = require("carddialog")
+local CardMove = require("cardmove")
 local Dispatcher = require("dispatcher")
 local InfoMessage = require("ui/widget/infomessage")
 local SleepScreen = require("sleepscreen")
@@ -100,6 +101,14 @@ function Kanban:addToMainMenu(menu_items)
             {
                 text = _("Open board"),
                 callback = function() self:onKanbanOpen() end,
+            },
+            {
+                text = _("Drag to move"),
+                checked_func = CardMove.isEnabled,
+                keep_menu_open = true,
+                callback = function()
+                    CardMove.setEnabled(not CardMove.isEnabled())
+                end,
             },
             {
                 text = _("Show board on sleep screen"),

@@ -9,8 +9,10 @@ boards, columns, and cards. Cards are not linked to books.
 - Add and edit cards with a title and optional notes. Card actions include moving
   a card to another column, moving it up or down within its column, and archiving
   it.
-- Hold a card to start a quick move, then tap a different column header to move
-  it there. Tap elsewhere to cancel.
+- Hold a card and slide it: a bar shows where it will land, and sliding onto a
+  column tab moves it to that column. Or hold, lift, then tap a gap between
+  cards, a column header or a tab. Lift where you picked it up to cancel. Turn
+  dragging off with **Tools → Kanban board → Drag to move**.
 - Restore archived cards to a selected column. Deleting a column archives its
   cards rather than deleting them.
 - Create, switch between, rename, and delete multiple boards. Tap the board name
