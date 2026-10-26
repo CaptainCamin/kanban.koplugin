@@ -445,7 +445,7 @@ function CardDialog.showBoards(view)
             end),
         },
         {
-            text = _("Rename"),
+            text = T(_("Rename “%1”"), current.name),
             callback = action(function()
                 promptName{
                     title = _("Rename board"),
@@ -460,7 +460,7 @@ function CardDialog.showBoards(view)
             end),
         },
         {
-            text = _("Delete"),
+            text = T(_("Delete “%1”"), current.name),
             enabled = #state.boards > 1,
             callback = action(function()
                 local count = 0
@@ -488,7 +488,7 @@ function CardDialog.showBoards(view)
         },
     })
     dialog = showDialog(ButtonDialog:new{
-        title = T(_("Boards\nRename and Delete apply to “%1”."), current.name),
+        title = _("Boards"),
         buttons = buttons,
     })
 end
@@ -502,6 +502,14 @@ function CardDialog.showBoardMenu(view)
             fn()
         end
     end
+
+    -- Rotate screen: switch between portrait and landscape, like KOReader's
+    -- DeviceListener:onSwapRotation (portrait modes are even, landscape = portrait + 1).
+    local function rotateScreen()
+        local rotation = require("device").screen:getRotationMode()
+        view:onSetRotationMode(rotation % 2 == 0 and rotation + 1 or rotation - 1)
+    end
+
     dialog = showDialog(ButtonDialog:new{
         title = board.name,
         use_info_style = false,
@@ -529,9 +537,9 @@ function CardDialog.showBoardMenu(view)
                 end),
             } },
             { {
-                text = _("Boards…"),
+                text = _("Rotate screen"),
                 callback = action(function()
-                    CardDialog.showBoards(view)
+                    rotateScreen()
                 end),
             } },
         },

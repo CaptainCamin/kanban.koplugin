@@ -190,8 +190,8 @@ list exists in `cards`. Indexes are clamped to the valid range.
 - [x] Hold a card for quick-move: the card is highlighted and the next tap on a column
       header moves it there. Tapping anywhere else cancels.
 - [x] Tap a column header for: Add card, Rename, Move left, Move right, Delete.
-- [x] Title bar menu: Add column, Archived cards (a list with Restore), Boards…
-      (switch, new, rename, delete).
+- [x] Title bar menu: Add column, Archived cards (a list with Restore). Board switching
+      (switch, new, rename, delete) opens from tapping the title (see decision log).
 - [x] The card editor is a `MultiInputDialog` with title and notes fields.
 - **Done when:** in the emulator, each action works, the view repaints correctly, and
   every change is still there after restarting KOReader.
@@ -420,3 +420,11 @@ Ideas the owner wants to keep but not build yet:
   under "Later". Rule 4 now allows phase 10's snap-preview drag. On 7" Kindles
   (1264×1680) the board keeps 2 columns in portrait, because `scaleBySize` scales with
   screen pixels, not physical size.
+- 2026-10-26: The board name in the title bar (marked ▼) is the board switcher: tapping
+  the title opens the Boards dialog, so switching is no longer one of four equal menu
+  items. The menu's "Boards…" entry was removed because it opened the same dialog.
+  The Boards dialog's title is just "Boards"; its buttons read "Rename “<board>”" and
+  "Delete “<board>”".
+- 2026-10-26: The board menu has "Rotate screen" for devices without an accelerometer.
+  It switches between portrait and landscape (like KOReader's `SwapRotation`), not
+  through all four rotations.

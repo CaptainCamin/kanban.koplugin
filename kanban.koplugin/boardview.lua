@@ -78,7 +78,8 @@ function BoardView:layout()
     self.title_bar = TitleBar:new{
         width = self.dimen.w,
         align = "center",
-        title = board and board.name or _("Kanban board"),
+        -- The title is the board switcher: the ▼ marks it as tappable.
+        title = board and (board.name .. " ▼") or _("Kanban board"),
         title_face = Font:getFace("smallinfofontbold"),
         with_bottom_line = true,
         bottom_line_color = Blitbuffer.COLOR_DARK_GRAY,
@@ -493,6 +494,12 @@ function BoardView:onTap(_, ges)
             self:layout()
             UIManager:setDirty(self, "ui")
         end
+        return true
+    end
+    -- The title bar's icons are handled before this; the rest of the bar switches boards.
+    local title_dimen = self.title_bar.dimen
+    if title_dimen and title_dimen.x and title_dimen:contains(ges.pos) then
+        CardDialog.showBoards(self)
         return true
     end
     local card_id = hit(self.card_targets, ges.pos)
