@@ -453,6 +453,14 @@ These add to the per-phase orb notes above.
     `~/.cache/koreader/current/usr/lib/koreader/settings/`. F2 suspends and resumes.
     Seed `kanban.lua` (and any `kanban-sleepscreen.lua`) there, or the board comes up
     empty.
+- **Launching:** run `.agents/emulator start [--size WxH] [--seed demo|empty]
+  [--build desktop|emulator] [--reader BOOK]`. It links this checkout's plugin,
+  seeds the selected build's settings (saving a replaced board as `kanban.lua.prev`),
+  sizes the orb output/window, and starts KOReader as the supervised `koreader`
+  service with the board open and httpinspector on port 8080. Use
+  `.agents/emulator screenshot FILE` to capture the window and `.agents/emulator stop`
+  to stop it. The default is 600×800, demo seed, desktop build; use the emulator build
+  for F2 suspend/resume checks.
 - Undo test state before finishing: `today_column` choices, the sleep-screen option
   (turn it off from the UI so the screensaver settings are restored), and any data
   files copied into the emulator build's settings folder.

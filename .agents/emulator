@@ -1,0 +1,336 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/koreader"
+app_root="$cache_dir/current"
+lib_dir="$app_root/usr/lib/koreader"
+app_run="$app_root/AppRun"
+lua="$lib_dir/luajit"
+inspector_port=8080
+
+usage() {
+    cat <<'EOF'
+Usage:
+  .agents/emulator start [--size WxH] [--seed demo|empty] [--build desktop|emulator] [--reader BOOK]
+  .agents/emulator stop
+  .agents/emulator screenshot FILE
+
+Defaults: --size 600x800 --seed demo --build desktop
+EOF
+}
+
+fail() {
+    echo "emulator: $*" >&2
+    exit 1
+}
+
+need_command() {
+    command -v "$1" >/dev/null 2>&1 || fail "missing '$1'; run .agents/setup"
+}
+
+ensure_dependencies() {
+    if [[ ! -x "$app_run" || ! -x "$lib_dir/reader.lua" ]] \
+        || ! command -v xdotool >/dev/null 2>&1 \
+        || ! command -v import >/dev/null 2>&1 \
+        || ! command -v wlr-randr >/dev/null 2>&1 \
+        || ! command -v curl >/dev/null 2>&1; then
+        "$repo/.agents/setup"
+    fi
+    [[ -x "$app_run" && -x "$lib_dir/reader.lua" ]] || fail "KOReader setup did not produce an extracted build"
+    need_command xdotool
+    need_command import
+    need_command wlr-randr
+    need_command curl
+}
+
+ensure_desktop() {
+    local desktop_env="$HOME/.cache/amp/desktop/environment"
+    if [[ -r "$desktop_env" ]]; then
+        # shellcheck disable=SC1090
+        source "$desktop_env"
+        if xdotool getdisplaygeometry >/dev/null 2>&1; then
+            return
+        fi
+    fi
+    amp orb desktop ensure
+    [[ -r "$desktop_env" ]] || fail "Desktop environment file not found: $desktop_env"
+    # shellcheck disable=SC1090
+    source "$desktop_env"
+    xdotool getdisplaygeometry >/dev/null 2>&1 || fail "Desktop started without a working display"
+}
+
+koreader_window() {
+    xdotool search --onlyvisible --name KOReader 2>/dev/null | tail -n 1
+}
+
+dismiss_startup_notice() {
+    local stack top notice window
+    for _ in {1..6}; do
+        stack=$(curl -fsS --max-time 2 "http://127.0.0.1:$inspector_port/koreader/UIManager/_window_stack/" 2>/dev/null || true)
+        top=$(grep -oE "/UIManager/_window_stack/[0-9]+" <<<"$stack" \
+            | tail -n 1 | awk -F/ '{print $NF}' || true)
+        if [[ -n "$top" ]]; then
+            notice=$(curl -fsS --max-time 2 \
+                "http://127.0.0.1:$inspector_port/koreader/UIManager/_window_stack/$top/widget/text" 2>/dev/null || true)
+            if [[ "$notice" == "Documents will be rendered in color on this device."* ]]; then
+                window=$(koreader_window) || true
+                if [[ -n "$window" ]]; then
+                    xdotool windowactivate --sync "$window"
+                    xdotool key Escape
+                fi
+                return
+            fi
+        fi
+        sleep 0.5
+    done
+}
+
+shell_quote() {
+    printf '%q' "$1"
+}
+
+link_plugin() {
+    local plugin_dir="$lib_dir/plugins"
+    local plugin_link="$plugin_dir/kanban.koplugin"
+    mkdir -p "$plugin_dir"
+    if [[ -e "$plugin_link" || -L "$plugin_link" ]]; then
+        [[ "$(readlink -f "$plugin_link")" == "$repo/kanban.koplugin" ]] \
+            || fail "plugin path already exists and does not point to this checkout: $plugin_link"
+        return
+    fi
+    ln -s "$repo/kanban.koplugin" "$plugin_link"
+}
+
+enable_httpinspector() {
+    "$lua" - "$1" "$lib_dir" <<'LUA'
+local path = assert(arg[1])
+local chunk, err = loadfile(path)
+local settings = {}
+if chunk then
+    local ok, result = pcall(chunk)
+    assert(ok, result)
+    assert(type(result) == "table", "settings.reader.lua must return a table")
+    settings = result
+elseif err and not err:match("No such file") then
+    error(err)
+end
+local dump = dofile(assert(arg[2]) .. "/frontend/dump.lua")
+local inspector = settings.httpinspector
+if type(inspector) ~= "table" then inspector = {} end
+inspector.autostart = true
+inspector.port = 8080
+settings.httpinspector = inspector
+
+local tmp = path .. ".tmp"
+local file = assert(io.open(tmp, "w"))
+assert(file:write("return ", dump(settings), "\n"))
+assert(file:close())
+assert(os.rename(tmp, path))
+LUA
+}
+
+write_demo_board() {
+    "$lua" - "$1" "$lib_dir" <<'LUA'
+local path = assert(arg[1])
+local now = os.time()
+local cards, todo = {}, {}
+
+for index = 1, 14 do
+    local id = "k" .. index
+    todo[index] = id
+    cards[id] = {
+        id = id,
+        title = string.format("Implementation task %02d", index),
+        notes = "",
+        created = now,
+        updated = now,
+        moved = now,
+        archived = false,
+        checklist = {},
+    }
+end
+cards.k1.title = "Plan the next release across the full team and confirm the final dates"
+cards.k2.title = "Collect feedback from readers"
+cards.k2.notes = "Capture a detail from the project brief.\nA second line for the card detail view."
+cards.k2.checklist = {
+    { text = "Review the open issues", done = true },
+    { text = "Summarize feedback", done = false },
+}
+
+for index, title in ipairs({ "Sketch the new layout", "Check contrast on e-ink", "Ship the first version" }) do
+    local id = "k" .. (14 + index)
+    cards[id] = {
+        id = id,
+        title = title,
+        notes = "",
+        created = now,
+        updated = now,
+        moved = now,
+        archived = false,
+        checklist = {},
+    }
+end
+
+local state = {
+    version = 2,
+    current_board = "b1",
+    boards = {
+        {
+            id = "b1",
+            name = "Demo board",
+            today_column = "c3",
+            columns = {
+                { id = "c1", name = "To Do", cards = todo, collapsed = false },
+                { id = "c2", name = "Blocked", cards = {}, collapsed = false },
+                { id = "c3", name = "Doing", cards = { "k15" }, collapsed = false },
+                { id = "c4", name = "Review", cards = { "k16" }, collapsed = false },
+                { id = "c5", name = "Done", cards = { "k17" }, collapsed = false },
+            },
+            cards = cards,
+            archived = {},
+            next_id = 18,
+        },
+    },
+}
+
+local dump = dofile(assert(arg[2]) .. "/frontend/dump.lua")
+local file = assert(io.open(path, "w"))
+assert(file:write("return ", dump({ state = state }), "\n"))
+assert(file:close())
+LUA
+}
+
+backup_seed() {
+    local file=$1
+    if [[ -e "$file" || -L "$file" ]]; then
+        cp -p -- "$file" "$file.prev"
+    fi
+}
+
+configure_seed() {
+    local settings_dir=$1
+    local seed=$2
+    local board_file="$settings_dir/kanban.lua"
+    mkdir -p "$settings_dir"
+    backup_seed "$board_file"
+    if [[ "$seed" == demo ]]; then
+        local temp
+        temp=$(mktemp "$settings_dir/.kanban.lua.XXXXXX")
+        if ! write_demo_board "$temp"; then
+            rm -f -- "$temp"
+            return 1
+        fi
+        mv -f -- "$temp" "$board_file"
+    else
+        rm -f -- "$board_file"
+    fi
+}
+
+start() {
+    local size=600x800 seed=demo build=desktop reader=
+    while (($#)); do
+        case "$1" in
+            --size) (($# >= 2)) || fail "--size needs WxH"; size=$2; shift 2 ;;
+            --seed) (($# >= 2)) || fail "--seed needs demo or empty"; seed=$2; shift 2 ;;
+            --build) (($# >= 2)) || fail "--build needs desktop or emulator"; build=$2; shift 2 ;;
+            --reader) (($# >= 2)) || fail "--reader needs a book path"; reader=$2; shift 2 ;;
+            -h|--help) usage; return ;;
+            *) fail "unknown start option: $1" ;;
+        esac
+    done
+
+    [[ "$size" =~ ^([1-9][0-9]*)x([1-9][0-9]*)$ ]] || fail "invalid size: $size"
+    local width=${BASH_REMATCH[1]} height=${BASH_REMATCH[2]}
+    [[ "$seed" == demo || "$seed" == empty ]] || fail "invalid seed: $seed"
+    [[ "$build" == desktop || "$build" == emulator ]] || fail "invalid build: $build"
+    if [[ -n "$reader" ]]; then
+        [[ -f "$reader" ]] || fail "book not found: $reader"
+        reader=$(realpath "$reader")
+    fi
+
+    ensure_dependencies
+    ensure_desktop
+    link_plugin
+    local output_width=$((width > 1280 ? width + 16 : 1280))
+    local output_height=$((height > 880 ? height + 80 : 960))
+    wlr-randr --output HEADLESS-1 --custom-mode "${output_width}x${output_height}"
+
+    local data_dir settings_dir
+    if [[ "$build" == desktop ]]; then
+        data_dir="${XDG_CONFIG_HOME:-$HOME/.config}/koreader"
+    else
+        data_dir="$lib_dir"
+    fi
+    settings_dir="$data_dir/settings"
+    mkdir -p "$settings_dir"
+    enable_httpinspector "$data_dir/settings.reader.lua"
+    configure_seed "$settings_dir" "$seed"
+
+    amp orb service stop koreader >/dev/null 2>&1 || true
+
+    local env_q app_q lib_q book_q log_q service_command
+    env_q=$(shell_quote "$HOME/.cache/amp/desktop/environment")
+    app_q=$(shell_quote "$app_run")
+    lib_q=$(shell_quote "$lib_dir")
+    log_q=$(shell_quote "$data_dir/crash.log")
+    book_q=$(shell_quote "$reader")
+    service_command="source $env_q; export SDL_VIDEODRIVER=x11 EMULATE_READER_W=$width EMULATE_READER_H=$height; unset KO_HOME"
+    if [[ "$build" == desktop ]]; then
+        service_command+="; exec $app_q"
+    else
+        # KOReader selects the suspend-capable SDL Emulator profile without these markers.
+        service_command+="; unset KO_MULTIUSER APPIMAGE FLATPAK UBUNTU_APPLICATION_ISOLATION; cd $lib_q; exec ./reader.lua"
+    fi
+    [[ -z "$reader" ]] || service_command+=" $book_q"
+    service_command+=" > $log_q 2>&1"
+    amp orb service start koreader --command "$service_command"
+
+    local response attempt
+    for attempt in {1..90}; do
+        response=$(curl -fsS --max-time 2 "http://127.0.0.1:$inspector_port/koreader/broadcast/KanbanOpen" 2>/dev/null || true)
+        if [[ "$response" == "Event broadcasted: KanbanOpen" ]]; then
+            dismiss_startup_notice
+            sleep 2
+            echo "KOReader started: build=$build seed=$seed window=${width}x${height} (output=${output_width}x${output_height})"
+            echo "Board opened via httpinspector on port $inspector_port"
+            echo "Settings: $settings_dir/kanban.lua and $data_dir/settings.reader.lua"
+            echo "Logs: $data_dir/crash.log"
+            echo "Rotation: curl http://127.0.0.1:$inspector_port/koreader/event/SetRotationMode/1"
+            return
+        fi
+        sleep 1
+    done
+    amp orb service logs koreader --lines 80 >&2 || true
+    fail "KOReader did not expose httpinspector on port $inspector_port; see $data_dir/crash.log"
+}
+
+stop() {
+    if amp orb service stop koreader >/dev/null 2>&1; then
+        echo "Stopped supervised KOReader service"
+    else
+        echo "KOReader service is not running"
+    fi
+}
+
+screenshot() {
+    (($# == 1)) || fail "screenshot needs an output file"
+    local desktop_env="$HOME/.cache/amp/desktop/environment"
+    [[ -r "$desktop_env" ]] || fail "Desktop environment is not ready; run .agents/emulator start first"
+    # shellcheck disable=SC1090
+    source "$desktop_env"
+    local target=$1 window
+    window=$(koreader_window) || true
+    [[ -n "$window" ]] || fail "no visible KOReader window; start it with .agents/emulator start"
+    mkdir -p "$(dirname "$target")"
+    import -window "$window" "$target"
+    echo "Captured KOReader window: $target"
+}
+
+case "${1:-}" in
+    start) shift; start "$@" ;;
+    stop) shift; (($# == 0)) || fail "stop takes no options"; stop ;;
+    screenshot) shift; screenshot "$@" ;;
+    -h|--help|"") usage ;;
+    *) usage >&2; fail "unknown command: $1" ;;
+esac
