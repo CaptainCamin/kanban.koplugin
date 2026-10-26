@@ -181,6 +181,7 @@ function BoardView:buildColumns(board, first, last, body_h)
 
     self.column_rects = {}
     self.card_targets = {} -- { frame, id }; frame.dimen is set when painted
+    self.add_card_targets = {} -- { frame, id = column id }
     self.header_targets = {}
     local row = HorizontalGroup:new{ align = "top", HorizontalSpan:new{ width = outer } }
     for index = first, last do
@@ -202,10 +203,17 @@ function BoardView:buildColumns(board, first, last, body_h)
             card_heights[position] = lines * line_h + glyph_extra_height
                 + 2 * (card_border + card_pad)
         end
+        local add_card_lines, add_card_glyph_extra_height = measureTitleLines(
+            _("+ Add card"), text_w, title_face)
+        local add_card_height = add_card_lines * line_h + add_card_glyph_extra_height
+            + 2 * (card_border + card_pad)
         local pages = {}
         local page_start, page_height
         for position, card_h in ipairs(card_heights) do
             local required_h = card_h + (page_height and card_gap or 0)
+            if position == count then
+                required_h = required_h + card_gap + add_card_height
+            end
             if page_height and page_height + required_h > cards_h then
                 table.insert(pages, { start = page_start, stop = position - 1 })
                 page_start = position
@@ -351,6 +359,26 @@ function BoardView:buildColumns(board, first, last, body_h)
             if position < stop then
                 table.insert(group, VerticalSpan:new{ width = card_gap })
             end
+        end
+        if count == 0 or stop == count then
+            table.insert(group, VerticalSpan:new{ width = card_gap })
+            local add_card_row = FrameContainer:new{
+                bordersize = card_border,
+                color = Blitbuffer.COLOR_GRAY,
+                radius = Size.radius.window,
+                padding = card_pad,
+                background = Blitbuffer.COLOR_WHITE,
+                TextBoxWidget:new{
+                    text = _("+ Add card"),
+                    face = title_face,
+                    width = text_w,
+                    height = add_card_lines * line_h,
+                    alignment = "center",
+                    fgcolor = Blitbuffer.COLOR_DARK_GRAY,
+                },
+            }
+            table.insert(self.add_card_targets, { frame = add_card_row, id = column.id })
+            table.insert(group, add_card_row)
         end
 
         -- Leave flexible space after the cards so the pager sits at the bottom.
@@ -625,6 +653,11 @@ function BoardView:onTap(_, ges)
     local column_id = hit(self.header_targets, ges.pos)
     if column_id then
         CardDialog.showColumnActions(self, column_id)
+        return true
+    end
+    local add_card_column_id = hit(self.add_card_targets, ges.pos)
+    if add_card_column_id then
+        CardDialog.editCard(self, add_card_column_id)
         return true
     end
     -- Let taps on the title bar and footer buttons through.

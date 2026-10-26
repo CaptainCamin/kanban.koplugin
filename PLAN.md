@@ -292,7 +292,8 @@ list exists in `cards`. Indexes are clamped to the valid range.
 ### Phase 9: Fewer taps
 - [ ] A1: the card dialog gets "← <previous column>" and "<next column> →" buttons
       (disabled at the ends; next column emphasized). "Move to…" stays.
-- [ ] A2: a "+ Add card" row under the last card of every column (dashed border),
+- [x] A2: a "+ Add card" row under the last card of every column (dashed or
+      otherwise clearly different border),
       opening the card editor for that column. On a column page that doesn't show the
       last card, it isn't shown.
 - [ ] A4: Move up/down keep the card dialog open (like the column dialog); add "Move to
@@ -302,6 +303,17 @@ list exists in `cards`. Indexes are clamped to the valid range.
       an Undo button. Undo restores the copy, saves, and repaints. One level only.
 - **Done when:** each action works in the emulator, Undo restores the previous board
   and survives a restart, and model specs cover any new Model functions.
+- **Verified A2 (2026-10-26, KOReader v2026.07.1 AppImage, 600×800):** checked an
+  empty column, a column ending mid-page, a second-page last card, and a full first
+  page where reserving the row moves the final card to page two. Adding cards from
+  the row saved and displayed them. Holding the row did not quick-move. After phase
+  10 was integrated, tapping the row with a card picked up canceled pickup without
+  opening the editor; dragging to the column-end gap appended the card above the row.
+  `busted` passes (24 tests); no ERROR/FATAL/CRASH entries in `crash.log`. Inspected captures:
+  `.amp/in/artifacts/phase9-addrow-empty.png`, `phase9-addrow-second-page.png`,
+  `phase9-addrow-overflow-page1.png`, `phase9-addrow-overflow-page2.png`,
+  `phase9-addrow-hold.png`, `phase9-addrow-quickmove.png`,
+  `phase9-addrow-picked-up-row.png`, and `phase9-addrow-end-drop.png`.
 
 ### Phase 10: Moving cards
 - [x] B2: after hold-and-lift (today's quick-move), tapping a gap between cards drops
@@ -606,3 +618,8 @@ These add to the per-phase orb notes above.
   cancels. Drag off preserves hold-and-lift/tap-to-drop. Tools → Kanban board →
   Drag to move defaults on and flushes `drag_to_move` to `kanban-options.lua` in
   `DataStorage:getSettingsDir()`, following sleepscreen.lua's LuaSettings pattern.
+- 2026-10-26: A2's add-card row uses a light-gray `FrameContainer` border because
+  KOReader's `FrameContainer` has no dashed-border option. Its height and gap count
+  toward card-page packing, so the final card moves to a later page when needed to
+  keep the row with it. Empty columns keep "No cards" and show the add row beneath it;
+  the row is a separate tap target, never a quick-move or hold-card target.
