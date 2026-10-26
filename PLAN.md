@@ -247,6 +247,16 @@ list exists in `cards`. Indexes are clamped to the valid range.
 - [x] A script that zips `kanban.koplugin/` into `kanban.koplugin.zip` (`package.sh`).
 - [ ] Optional: export a board to Markdown in the home folder. (Moved to phase 14.)
 - **Done when:** installing from the zip on a clean KOReader works.
+- **Verified (2026-10-26, KOReader v2026.07.1, 600×800):** `./package.sh` produced
+  a valid zip. Extracted it into a brand-new, empty HOME with no repository symlink;
+  Tools → Kanban board opened the default board with To Do, Doing and Done. Rechecked
+  the title-bar Boards dialog and board switching, the ☰ menu entries (Add column,
+  Archived cards, Rotate screen; no Boards…), and portrait → landscape → portrait
+  rotation with the columns laid out correctly. No errors, failures or crashes in
+  `crash.log`; `busted` passes (13 tests). Inspected captures:
+  `.amp/in/artifacts/verify-board-menu.png`, `verify-boards-dialog.png`,
+  `verify-board-portrait.png`, `verify-board-landscape.png`,
+  `verify-clean-install.png` and `verify-clean-install-done.png`.
 
 ### Phase 8: Layout
 - [ ] C1: size each card to its title (1–3 lines, still cut at 3 with "…"). Fill each
