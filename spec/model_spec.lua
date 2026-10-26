@@ -352,4 +352,37 @@ describe("kanban model", function()
         assert.is_nil(Model.moveCard(board, "k4", doing))
         assert_invariants(state)
     end)
+
+    it("copies and restores a board snapshot without sharing nested tables", function()
+        local state = Model.newState()
+        local board = state.boards[1]
+        local todo, doing = board.columns[1].id, board.columns[2].id
+        assert.is_true(Model.addCard(board, todo, { title = "Write notes" }, nil, 10))
+        assert.is_true(Model.addChecklistItem(board, "k4", "Review draft", nil, 11))
+        local snapshot = Model.copyBoard(board)
+
+        assert.is_false(rawequal(board, snapshot))
+        assert.is_false(rawequal(board.columns, snapshot.columns))
+        assert.is_false(rawequal(board.cards.k4.checklist, snapshot.cards.k4.checklist))
+        assert.is_true(Model.moveCard(board, "k4", doing, 1, 12))
+        board.cards.k4.checklist[1].done = true
+        board.name = "Changed"
+        assert.same({ "k4" }, board.columns[2].cards)
+        assert.equals("My board", snapshot.name)
+        assert.is_false(snapshot.cards.k4.checklist[1].done)
+        assert_invariants(state)
+
+        assert.is_true(Model.restoreBoard(state, snapshot))
+        local restored = state.boards[1]
+        assert.same({ "k4" }, restored.columns[1].cards)
+        assert.same({}, restored.columns[2].cards)
+        assert.equals("My board", restored.name)
+        assert.is_false(restored.cards.k4.checklist[1].done)
+        assert.is_false(rawequal(snapshot, restored))
+        assert.is_false(rawequal(snapshot.columns, restored.columns))
+        assert.is_false(rawequal(snapshot.cards.k4.checklist, restored.cards.k4.checklist))
+        snapshot.cards.k4.title = "Snapshot changed later"
+        assert.equals("Write notes", restored.cards.k4.title)
+        assert_invariants(state)
+    end)
 end)

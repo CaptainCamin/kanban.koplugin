@@ -65,6 +65,17 @@ local function find_id(list, id)
     end
 end
 
+local function copy_table(value)
+    if type(value) ~= "table" then
+        return value
+    end
+    local copy = {}
+    for key, item in pairs(value) do
+        copy[copy_table(key)] = copy_table(item)
+    end
+    return copy
+end
+
 local function clamp(index, minimum, maximum)
     index = tonumber(index) or maximum
     index = math.floor(index)
@@ -109,6 +120,22 @@ function Model.newState()
         current_board = board.id,
         boards = { board },
     }
+end
+
+function Model.copyBoard(board)
+    return copy_table(board)
+end
+
+function Model.restoreBoard(state, snapshot)
+    if type(snapshot) ~= "table" or type(snapshot.id) ~= "string" then
+        return nil, "board snapshot is invalid"
+    end
+    local _, index = find_board(state, snapshot.id)
+    if not index then
+        return nil, "board not found"
+    end
+    state.boards[index] = copy_table(snapshot)
+    return true
 end
 
 function Model.addBoard(state, name)

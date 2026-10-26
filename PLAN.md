@@ -290,17 +290,18 @@ list exists in `cards`. Indexes are clamped to the valid range.
   `crash.log`; `busted` passes (24 tests).
 
 ### Phase 9: Fewer taps
-- [ ] A1: the card dialog gets "← <previous column>" and "<next column> →" buttons
+- [x] A1: the card dialog gets "← <previous column>" and "<next column> →" buttons
       (disabled at the ends; next column emphasized). "Move to…" stays.
 - [x] A2: a "+ Add card" row under the last card of every column (dashed or
       otherwise clearly different border),
       opening the card editor for that column. On a column page that doesn't show the
       last card, it isn't shown.
-- [ ] A4: Move up/down keep the card dialog open (like the column dialog); add "Move to
+- [x] A4: Move up/down keep the card dialog open (like the column dialog); add "Move to
       top" and "Move to bottom".
-- [ ] A3: undo the last change. `commit()` keeps a deep copy of the board before each
+- [x] A3: undo the last change. `commit()` keeps a deep copy of the board before each
       change; after move, archive, delete column and restore, show a short message with
-      an Undo button. Undo restores the copy, saves, and repaints. One level only.
+      an Undo button. Within-column reorders show the message and button in the open
+      card dialog. Undo restores the copy, saves, and repaints. One level only.
 - **Done when:** each action works in the emulator, Undo restores the previous board
   and survives a restart, and model specs cover any new Model functions.
 - **Verified A2 (2026-10-26, KOReader v2026.07.1 AppImage, 600×800):** checked an
@@ -314,6 +315,27 @@ list exists in `cards`. Indexes are clamped to the valid range.
   `phase9-addrow-overflow-page1.png`, `phase9-addrow-overflow-page2.png`,
   `phase9-addrow-hold.png`, `phase9-addrow-quickmove.png`,
   `phase9-addrow-picked-up-row.png`, and `phase9-addrow-end-drop.png`.
+- **Verified (2026-10-26, KOReader v2026.07.1, 600×800):** A1 previous/next shortcuts
+  and Move to… (Doing and Done) work, with the endpoint actions disabled. A4 Move
+  up/down/top/bottom reorder cards and leave the card dialog open with an inline Undo
+  row; repeated moves remain available, and Undo restores the previous order without
+  closing the dialog. A3 Undo restores after move, archive, column deletion and
+  restore; the persisted reorder Undo prompt survived restart, then restored the board
+  and cleared the undo record. `busted` passes (25 tests). The current `crash.log`
+  contains no ERROR/FATAL/CRASH entries; earlier pre-fix tracebacks were recorded in
+  the prior session log. Inspected
+  captures in `.amp/in/artifacts/`: `phase9-card-dialog-final.png`,
+  `phase9-reorder-inline-undo.png`, `phase9-inline-undo-restored.png`,
+  `phase9-reorder-repeated-final.png`, `phase9-reorder-repeated-undo-final.png`,
+  `phase9-move-to-top-inline*.png`, and `phase9-undo-restart-current-*.png`. Archive,
+  delete-column, restore, adjacent-column and Move to… captures use the patterns
+  `phase9-latest-archive-*`, `phase9-latest-delete-column-*`, `phase9-latest-restore-*`,
+  `phase9-latest-previous-*`, `phase9-latest-next-*`, and `phase9-latest-move-to-*`.
+  The full interaction matrix above was run before the fast-forward. After updating to
+  `origin/main` (`f57fb93`), manually reopened and inspected the latest board and card
+  dialog in `phase9-final-board.png` and `phase9-final-card-dialog.png`; the startup
+  helper did not expose httpinspector, so the post-fast-forward interaction pass could
+  not be completed through its automation.
 
 ### Phase 10: Moving cards
 - [x] B2: after hold-and-lift (today's quick-move), tapping a gap between cards drops
@@ -631,3 +653,22 @@ These add to the per-phase orb notes above.
   toward card-page packing, so the final card moves to a later page when needed to
   keep the row with it. Empty columns keep "No cards" and show the add row beneath it;
   the row is a separate tap target, never a quick-move or hold-card target.
+- 2026-10-26: Phase 9 A1 keeps Move to… for arbitrary destinations and adds adjacent
+  column shortcuts; the next-column shortcut uses a larger font, and unavailable
+  directions stay visible but disabled.
+- 2026-10-26: Phase 9 A4 keeps the card action dialog open after within-column moves,
+  including Move to top/bottom. Its Card moved message and Undo button are inline with
+  the actions, so the user can immediately repeat a reorder; Undo rebuilds the dialog
+  for the restored order.
+- 2026-10-26: Phase 9 A3 persists one board snapshot and the previous paging position
+  in the state for active-board commits, covering card-dialog and drag moves, archive,
+  delete-column and restore. Reorder records also keep their card context for the
+  inline Undo row. Successful active-board changes replace the one-level record;
+  board selection/add/delete that switches the current board clears it. Moves (dialog
+  and drag), archive, column delete and restore show an Undo prompt that closes after
+  10 seconds; other changes (edits, adds, renames) show none. The last change of the
+  current board can always be undone from the board menu's "Undo: <change>" entry,
+  which is how undo survives a restart (no prompt pops up when the board opens).
+- 2026-10-26: The Move to… and Restore destination buttons bind each destination in
+  a per-iteration local and resolve their gettext message outside the generic-for loop;
+  this avoids Lua 5.1 loop-variable capture and `_` shadowing in callbacks.

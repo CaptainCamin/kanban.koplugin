@@ -13,6 +13,10 @@ boards, columns, and cards. Cards are not linked to books.
   column tab moves it to that column. Or hold, lift, then tap a gap between
   cards, a column header or a tab. Lift where you picked it up to cancel. Turn
   dragging off with **Tools → Kanban board → Drag to move**.
+- Undo the last change: moves, archiving, deleting a column and restoring show
+  an **Undo** button for a few seconds, and the board menu (☰) always has
+  **Undo: <change>**, even after a restart. The card dialog also has
+  previous/next column buttons and Move to top/bottom.
 - Restore archived cards to a selected column. Deleting a column archives its
   cards rather than deleting them.
 - Create, switch between, rename, and delete multiple boards. Tap the board name

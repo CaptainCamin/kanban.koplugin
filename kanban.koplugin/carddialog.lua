@@ -140,15 +140,17 @@ function CardDialog.moveCardTo(view, card_id)
     local from = view:locateCard(card_id)
     local dialog
     local buttons = {}
+    local moved_message = _("Card moved")
     for _, column in ipairs(board.columns) do
         if column ~= from then
+            local destination = column
             table.insert(buttons, { {
-                text = column.name,
+                text = destination.name,
                 callback = function()
                     UIManager:close(dialog)
-                    view:commit(function() return Model.moveCard(board, card_id, column.id) end, function()
-                        view:revealCard(column.id, #column.cards)
-                    end)
+                    view:commit(function() return Model.moveCard(board, card_id, destination.id) end, function()
+                        view:revealCard(destination.id, #destination.cards)
+                    end, nil, moved_message)
                 end,
             } })
         end
@@ -169,65 +171,128 @@ function CardDialog.showCardActions(view, card_id)
     local board = view:getBoard()
     local card = board.cards[card_id]
     local column, index = view:locateCard(card_id)
+    local column_position = select(2, view:findColumn(column.id))
     local dialog
+    local undo = view.state.undo
+    local inline_undo = undo and undo.board.id == board.id
+        and undo.context and undo.context.kind == "card-reorder"
+        and undo.context.card_id == card_id
     local function action(fn)
         return function()
             UIManager:close(dialog)
             fn()
         end
     end
+    local function moveToColumn(column_id)
+        view:commit(function() return Model.moveCard(board, card_id, column_id) end, function()
+            local destination = view:findColumn(column_id)
+            view:revealCard(column_id, #destination.cards)
+        end, nil, _("Card moved"))
+    end
+    local function moveWithinColumn(to_index)
+        UIManager:close(dialog)
+        if view:commit(function() return Model.moveCard(board, card_id, column.id, to_index) end, function()
+            view:revealCard(column.id, to_index)
+        end, nil, _("Card moved"), true, { kind = "card-reorder", card_id = card_id }) then
+            CardDialog.showCardActions(view, card_id)
+        end
+    end
+    local previous_column = board.columns[column_position - 1]
+    local next_column = board.columns[column_position + 1]
+    local buttons = {
+        {
+            {
+                text = _("Edit"),
+                callback = action(function()
+                    CardDialog.editCard(view, column.id, card_id)
+                end),
+            },
+            {
+                text = _("Move to…"),
+                enabled = #board.columns > 1,
+                callback = action(function()
+                    CardDialog.moveCardTo(view, card_id)
+                end),
+            },
+        },
+        {
+            {
+                text = previous_column and T(_("← %1"), previous_column.name) or _("← Previous column"),
+                enabled = previous_column ~= nil,
+                callback = action(function()
+                    moveToColumn(previous_column.id)
+                end),
+            },
+            {
+                text = next_column and T(_("%1 →"), next_column.name) or _("Next column →"),
+                enabled = next_column ~= nil,
+                font_size = 22,
+                callback = action(function()
+                    moveToColumn(next_column.id)
+                end),
+            },
+        },
+        {
+            {
+                text = _("Move up"),
+                enabled = index > 1,
+                callback = function() moveWithinColumn(index - 1) end,
+            },
+            {
+                text = _("Move down"),
+                enabled = index < #column.cards,
+                callback = function() moveWithinColumn(index + 1) end,
+            },
+        },
+        {
+            {
+                text = _("Move to top"),
+                enabled = index > 1,
+                callback = function() moveWithinColumn(1) end,
+            },
+            {
+                text = _("Move to bottom"),
+                enabled = index < #column.cards,
+                callback = function() moveWithinColumn(#column.cards) end,
+            },
+        },
+    }
+    if inline_undo then
+        table.insert(buttons, {
+            {
+                text = undo.message or _("Card moved"),
+                enabled = false,
+                align = "left",
+                font_bold = false,
+            },
+            {
+                text = _("Undo"),
+                callback = function()
+                    UIManager:close(dialog)
+                    if view:undo() then
+                        CardDialog.showCardActions(view, card_id)
+                    end
+                end,
+            },
+        })
+    end
+    table.insert(buttons, {
+        {
+            text = _("Archive"),
+            callback = action(function()
+                view:commit(function() return Model.archiveCard(board, card_id) end,
+                    nil, nil, _("Card archived"))
+            end),
+        },
+        {
+            text = _("Cancel"),
+            callback = action(function() end),
+        },
+    })
     dialog = ButtonDialog:new{
         title = card.title,
         use_info_style = false, -- bold title, so the notes below stand apart
-        buttons = {
-            {
-                {
-                    text = _("Edit"),
-                    callback = action(function()
-                        CardDialog.editCard(view, column.id, card_id)
-                    end),
-                },
-                {
-                    text = _("Move to…"),
-                    enabled = #board.columns > 1,
-                    callback = action(function()
-                        CardDialog.moveCardTo(view, card_id)
-                    end),
-                },
-            },
-            {
-                {
-                    text = _("Move up"),
-                    enabled = index > 1,
-                    callback = action(function()
-                        view:commit(function() return Model.moveCard(board, card_id, column.id, index - 1) end, function()
-                            view:revealCard(column.id, index - 1)
-                        end)
-                    end),
-                },
-                {
-                    text = _("Move down"),
-                    enabled = index < #column.cards,
-                    callback = action(function()
-                        view:commit(function() return Model.moveCard(board, card_id, column.id, index + 1) end, function()
-                            view:revealCard(column.id, index + 1)
-                        end)
-                    end),
-                },
-            },
-            {
-                {
-                    text = _("Archive"),
-                    callback = action(function()
-                        view:commit(function() return Model.archiveCard(board, card_id) end)
-                    end),
-                },
-                {
-                    text = _("Cancel"),
-                    callback = action(function() end),
-                },
-            },
-        },
+        buttons = buttons,
     }
     if hasText(card.notes) then
         local notes = card.notes
@@ -327,7 +392,8 @@ function CardDialog.showColumnActions(view, column_id)
                             text = text,
                             ok_text = _("Delete"),
                             ok_callback = function()
-                                view:commit(function() return Model.deleteColumn(board, column_id) end)
+                                view:commit(function() return Model.deleteColumn(board, column_id) end,
+                                    nil, nil, _("Column deleted"))
                             end,
                         })
                     end),
@@ -346,15 +412,17 @@ function CardDialog.restoreCard(view, card_id, close_parent)
     local card = board.cards[card_id]
     local dialog
     local buttons = {}
+    local restored_message = _("Card restored")
     for _, column in ipairs(board.columns) do
+        local destination = column
         table.insert(buttons, { {
-            text = column.name,
+            text = destination.name,
             callback = function()
                 UIManager:close(dialog)
                 close_parent()
-                view:commit(function() return Model.restoreCard(board, card_id, column.id) end, function()
-                    view:revealCard(column.id, #column.cards)
-                end)
+                view:commit(function() return Model.restoreCard(board, card_id, destination.id) end, function()
+                    view:revealCard(destination.id, #destination.cards)
+                end, nil, restored_message)
             end,
         } })
     end
@@ -518,10 +586,19 @@ function CardDialog.showBoardMenu(view)
         view:onSetRotationMode(rotation % 2 == 0 and rotation + 1 or rotation - 1)
     end
 
+    local undo = view.state.undo
+    local can_undo = undo and undo.board and undo.board.id == board.id
     dialog = showDialog(ButtonDialog:new{
         title = board.name,
         use_info_style = false,
         buttons = {
+            { {
+                text = can_undo and T(_("Undo: %1"), undo.message) or _("Undo"),
+                enabled = can_undo and true or false,
+                callback = action(function()
+                    view:undo()
+                end),
+            } },
             { {
                 text = _("Add column"),
                 callback = action(function()

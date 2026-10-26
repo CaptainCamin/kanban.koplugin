@@ -6,6 +6,7 @@ local LuaSettings = require("luasettings")
 local Model = require("model")
 local UIManager = require("ui/uimanager")
 local logger = require("logger")
+local _ = require("gettext")
 
 local CardMove = {}
 local settings = LuaSettings:open(DataStorage:getSettingsDir() .. "/kanban-options.lua")
@@ -117,7 +118,7 @@ function CardMove.drop(view, target)
     if destination and not (source == destination and old_index == index) then
         view:commit(function()
             return Model.moveCard(view:getBoard(), card_id, destination.id, index)
-        end, function() view:revealCard(destination.id, index) end)
+        end, function() view:revealCard(destination.id, index) end, nil, _("Card moved"))
     else
         view:layout()
         UIManager:setDirty(view, "ui")

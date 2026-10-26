@@ -1,6 +1,7 @@
 local BD = require("ui/bidi")
 local Blitbuffer = require("ffi/blitbuffer")
 local Button = require("ui/widget/button")
+local ButtonDialog = require("ui/widget/buttondialog")
 local CardDialog = require("carddialog")
 local CardMove = require("cardmove")
 local CenterContainer = require("ui/widget/container/centercontainer")
@@ -15,6 +16,7 @@ local InfoMessage = require("ui/widget/infomessage")
 local InputContainer = require("ui/widget/container/inputcontainer")
 local LeftContainer = require("ui/widget/container/leftcontainer")
 local LineWidget = require("ui/widget/linewidget")
+local Model = require("model")
 local OverlapGroup = require("ui/widget/overlapgroup")
 local RightContainer = require("ui/widget/container/rightcontainer")
 local Size = require("ui/size")
@@ -47,6 +49,14 @@ local function measureTitleLines(title, width, face, bold)
     local glyph_extra_height = measurement.line_glyph_extra_height
     measurement:free(true)
     return math.max(1, math.min(TITLE_LINES, lines)), glyph_extra_height
+end
+
+local function copy_map(source)
+    local copy = {}
+    for key, value in pairs(source or {}) do
+        copy[key] = value
+    end
+    return copy
 end
 
 local BoardView = InputContainer:extend{
@@ -601,12 +611,30 @@ end
 -- Runs `change`, a function that calls one Model operation and returns its
 -- result. On success, saves at once and repaints; `after` can adjust the view
 -- position before the repaint.
-function BoardView:commit(change, after, refresh_type)
+function BoardView:commit(change, after, refresh_type, undo_message, defer_undo_message, undo_context)
+    local board = self:getBoard()
+    local previous_board = Model.copyBoard(board)
+    local previous_position = {
+        first_column = self.first_column,
+        card_start = copy_map(self.card_start),
+    }
     local ok, err = change()
     if not ok then
         logger.warn("kanban: change rejected:", err)
         UIManager:show(InfoMessage:new{ text = T(_("Could not change the board: %1"), tostring(err)) })
         return false
+    end
+    local current_board = self:getBoard()
+    if current_board and current_board.id == board.id then
+        self.state.undo = {
+            board = previous_board,
+            message = undo_message or _("Change made"),
+            context = undo_context,
+            first_column = previous_position.first_column,
+            card_start = previous_position.card_start,
+        }
+    else
+        self.state.undo = nil
     end
     Storage.save(self.state)
     if after then
@@ -614,7 +642,68 @@ function BoardView:commit(change, after, refresh_type)
     end
     self:layout()
     UIManager:setDirty(self, refresh_type or "ui")
+    -- Only changes that name themselves (moves, archive, column delete, restore) pop up
+    -- an Undo prompt; every change can still be undone from the board menu.
+    if self.state.undo and undo_message and not defer_undo_message then
+        self:showUndoMessage()
+    end
     return true
+end
+
+function BoardView:undo()
+    local undo = self.state.undo
+    if not undo then
+        return false
+    end
+    local ok, err = Model.restoreBoard(self.state, undo.board)
+    if not ok then
+        logger.warn("kanban: undo failed:", err)
+        UIManager:show(InfoMessage:new{ text = T(_("Could not undo the change: %1"), tostring(err)) })
+        return false
+    end
+    self.state.undo = nil
+    self.first_column = undo.first_column or 1
+    self.card_start = copy_map(undo.card_start)
+    Storage.save(self.state)
+    self:layout()
+    UIManager:setDirty(self, "flashui")
+    return true
+end
+
+function BoardView:showUndoMessage()
+    local undo = self.state.undo
+    if not undo then
+        return
+    end
+    local dialog
+    local timeout
+    dialog = ButtonDialog:new{
+        title = undo.message or _("Change made"),
+        modal = true,
+        buttons = { {
+            {
+                text = _("Undo"),
+                callback = function()
+                    UIManager:close(dialog)
+                    self:undo()
+                end,
+            },
+        } },
+    }
+    local on_close_widget = dialog.onCloseWidget
+    dialog.onCloseWidget = function(widget)
+        if timeout then
+            UIManager:unschedule(timeout)
+            timeout = nil
+        end
+        on_close_widget(widget)
+    end
+    UIManager:show(dialog)
+    timeout = function()
+        timeout = nil
+        UIManager:close(dialog)
+    end
+    UIManager:scheduleIn(10, timeout)
 end
 
 local function hit(targets, pos)
