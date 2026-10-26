@@ -53,7 +53,8 @@ The repository root is not the plugin. To install, copy `kanban.koplugin/` into
    you use them. Copy patterns from bundled plugins; `plugins/vocabbuilder.koplugin`
    and `plugins/statistics.koplugin` are good references for full-screen widgets.
    Don't invent widget options.
-4. **Respect e-ink.** No animation and no drag-and-drop. Use
+4. **Respect e-ink.** No animation. The only drag-and-drop is phase 10's snap-preview
+   drag: a drop bar that jumps between gaps, never a card that follows the finger. Use
    `UIManager:setDirty(widget, "ui")` for local changes and `"flashui"` when a page
    changes. Repaint only after a change, never on a timer.
 5. **Wrap every user-visible string in `_()`** (`local _ = require("gettext")`).
@@ -244,8 +245,104 @@ list exists in `cards`. Indexes are clamped to the valid range.
 ### Phase 7: Release
 - [ ] README: features, installation, screenshots, data file location.
 - [ ] A script that zips `kanban.koplugin/` into `kanban.koplugin.zip`.
-- [ ] Optional: export a board to Markdown in the home folder.
+- [ ] Optional: export a board to Markdown in the home folder. (Moved to phase 14.)
 - **Done when:** installing from the zip on a clean KOReader works.
+
+### Phase 8: Layout
+- [ ] C1: size each card to its title (1–3 lines, still cut at 3 with "…"). Fill each
+      column page with as many cards as fit; card paging (`card_start`, swipe
+      north/south, "Cards 1–10 of 14") follows the variable heights.
+- [ ] C2: replace the "‹ Columns 1–2 of 4 ›" footer with a row of column tabs showing
+      each column's name and card count (`Ideas 14`). The columns on screen are inverted
+      (black fill, white text). Tapping a tab shows the page holding that column. Long
+      names are cut so every tab fits; if the tabs can't fit, keep the chevrons at the
+      row's ends.
+- **Done when:** emulator captures at 600×800, 1264×1680 portrait and 1680×1264
+  landscape show more cards per column than before (target: about 10 on 7" portrait
+  with the seeded board), tabs for 4 and 7 columns, and a column with a 3-line title.
+
+### Phase 9: Fewer taps
+- [ ] A1: the card dialog gets "← <previous column>" and "<next column> →" buttons
+      (disabled at the ends; next column emphasized). "Move to…" stays.
+- [ ] A2: a "+ Add card" row under the last card of every column (dashed border),
+      opening the card editor for that column. On a column page that doesn't show the
+      last card, it isn't shown.
+- [ ] A4: Move up/down keep the card dialog open (like the column dialog); add "Move to
+      top" and "Move to bottom".
+- [ ] A3: undo the last change. `commit()` keeps a deep copy of the board before each
+      change; after move, archive, delete column and restore, show a short message with
+      an Undo button. Undo restores the copy, saves, and repaints. One level only.
+- **Done when:** each action works in the emulator, Undo restores the previous board
+  and survives a restart, and model specs cover any new Model functions.
+
+### Phase 10: Moving cards
+- [ ] B2: after hold-and-lift (today's quick-move), tapping a gap between cards drops
+      the card there, and tapping a tab drops it at the end of that column. Headers keep
+      working. Holding works on a one-column board too (reordering).
+- [ ] B1: drag, behind a "Drag to move" setting (default on). Hold a card, then slide:
+      `hold_pan` events move a thick drop bar between gaps; the bar is redrawn only when
+      it changes gap, with `"a2"` refresh on the old and new bar regions. Sliding onto a
+      tab inverts it. `hold_release` drops through `commit()`, followed by one `"ui"`
+      refresh. Lifting where the card was picked up cancels; lifting without moving
+      falls back to B2. Movement under `PAN_THRESHOLD` doesn't start a drag.
+- **Done when:** in the emulator, drag within a column, to another column on screen and
+  to a tab on another page all work, and cancel leaves the board unchanged. The owner
+  tries it on their device and records how responsive it is.
+
+### Phase 11: Card detail (data model version 2)
+- [ ] Schema version 2: cards gain `checklist = { { text, done } }`, columns gain
+      `collapsed`. `Storage.migrate` upgrades version 1 files; specs cover the migration
+      and a round trip.
+- [ ] E1: tapping a card opens a full-screen card view: title, all notes (scrollable),
+      the checklist (tap an item to tick it, add/edit/delete items), and the card
+      actions from phase 9.
+- [ ] C4: small markers on board cards: ¶ when it has notes, ☑ done/total for the
+      checklist, and days in the current column (needs a `moved` timestamp, set by
+      `addCard`/`moveCard`).
+- [ ] C6: collapse a column (column dialog) into a narrow strip with its name and count;
+      tap it to expand. Collapsed columns take less room, so more columns fit a page.
+- **Done when:** a version 1 file loads and upgrades without losing data, and captures
+  show the card view, markers and a collapsed column.
+
+### Phase 12: Bulk actions and faster repaints
+- [ ] A8: Select mode (board menu): tapping cards toggles them; a bar offers Move to…,
+      Archive and Cancel for the selection.
+- [ ] D4: repaint only the widgets a change touched (the affected columns, the tabs)
+      with `setDirty` on their regions, instead of rebuilding and refreshing the whole
+      board. Page changes still use `"flashui"`.
+- **Done when:** select-and-move/archive works, and moving a card within one column
+  refreshes only that column (checked by logging the refreshed regions).
+
+### Phase 13: Now card and sleep screen
+- [ ] D2: pin one card as "Now" (card actions). It shows above the columns in bold;
+      unpin from the same place. One per board.
+- [ ] D1: opt-in "Show board on sleep screen" setting. On suspend, render the current
+      board (or the Now card, if set) to a PNG in the settings dir and point the
+      screensaver at it, the way Screenshoter's "Set as book cover" does
+      (`screensaver_type` / `screensaver_document_cover`). Turning it off restores the
+      user's previous screensaver settings.
+- **Done when:** the setting works in the emulator's suspend flow, the previous
+  screensaver settings come back when it's turned off, and the owner checks it on
+  their device.
+
+### Phase 14: Across boards and Markdown
+- [ ] F3: a "Today" view from the board menu and a Dispatcher action, listing the cards
+      in every board's in-progress columns (by default, the second-to-last column;
+      configurable per board), grouped by board. Tapping a card opens it.
+- [ ] F7: export a board to Markdown in the home folder (columns as headings, cards as
+      list items, checklists as `- [ ]`), and import such a file as a new board.
+- **Done when:** export then import gives an identical board (spec), and the Today view
+  works from the menu and a gesture.
+
+### Later (not scheduled)
+Ideas the owner wants to keep but not build yet:
+- Pinch to zoom: `pinch`/`spread` step between fixed density levels (one large column,
+  normal, compact one-line cards, overview with count bars), one refresh per step; also
+  in the board menu for devices without multitouch.
+- Screenshots on cards: attach the newest KOReader screenshot or any image; files kept
+  next to `kanban.lua`, opened in KOReader's image viewer from the card view.
+- Sending bugs to Claude: either ask the Anthropic API about a card and append the reply
+  to its notes, or file a card as a bug for a coding agent. Undecided which.
 
 ## How to verify
 
@@ -316,3 +413,10 @@ list exists in `cards`. Indexes are clamped to the valid range.
 - 2026-10-25: Don't give phases that need screenshot checks to Amp's `low` mode: its
   model can't accept images, and once a screenshot is in the thread every request
   fails.
+- 2026-10-26: Added phases 8–14 from a UI/UX brainstorm; the owner picked the items
+  (IDs such as C1 and B1 refer to that list). Not picked for now: holding a column
+  header to move the column (B3), the columns-per-screen setting, list view, labels,
+  due dates, search. Pinch to zoom, screenshots on cards and sending bugs to Claude are
+  under "Later". Rule 4 now allows phase 10's snap-preview drag. On 7" Kindles
+  (1264×1680) the board keeps 2 columns in portrait, because `scaleBySize` scales with
+  screen pixels, not physical size.
