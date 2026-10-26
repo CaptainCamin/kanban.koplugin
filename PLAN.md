@@ -460,3 +460,19 @@ Ideas the owner wants to keep but not build yet:
   `Model.moveChecklistItem(board, card_id, item_index, new_index, clock?)`, and
   `Model.setColumnCollapsed(board, column_id, collapsed)`. Checklist mutations update
   `card.updated`; add/move indexes clamp to the valid range.
+- 2026-10-26: The pure Markdown format uses `# Board name`, one `## Column` heading
+  per column, plain top-level `- Title` card items, and nested `- [ ]` / `- [x]`
+  checklist items. Card notes use an HTML-comment-delimited region only when non-empty;
+  every note line is a blockquote line inside the card, preserving blank lines and
+  Markdown-looking text while keeping the boundaries unambiguous. The final
+  `# Archived cards` section holds archived cards. Names, titles and checklist text are
+  written verbatim except that backslashes and newline, carriage-return and tab
+  characters are escaped as `\\`, `\n`, `\r` and `\t`; structure is determined by line
+  position and indentation. Import accepts CRLF, extra blank lines and a missing
+  archive section.
+- 2026-10-26: `Markdown.export(board)` returns the Markdown string.
+  `Markdown.import(text, state?, clock?)` returns the newly built board or `nil, err`;
+  with a destination state it adds a board through `Model.addBoard`, and without one
+  it builds a standalone board from `Model.newState`. Optional `clock` is forwarded to
+  Model card/checklist operations for deterministic timestamps. Phase 14 F7 remains
+  unchecked until its UI, file writing and Today view work is complete.
