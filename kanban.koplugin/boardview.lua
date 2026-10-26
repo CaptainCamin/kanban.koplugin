@@ -32,6 +32,22 @@ local Screen = Device.screen
 
 local MAX_COLUMNS = 3
 local TITLE_LINES = 3
+local MIN_TAB_WIDTH = 88
+
+local function measureTitleLines(title, width, face, bold)
+    local measurement = TextBoxWidget:new{
+        text = title,
+        face = face,
+        bold = bold,
+        width = width,
+        height = 1, -- only the first line needs a backing buffer during measurement
+        for_measurement_only = true,
+    }
+    local lines = measurement:getAllLineCount()
+    local glyph_extra_height = measurement.line_glyph_extra_height
+    measurement:free(true)
+    return math.max(1, math.min(TITLE_LINES, lines)), glyph_extra_height
+end
 
 local BoardView = InputContainer:extend{
     state = nil, -- storage state; changed only through Model, via commit()
@@ -101,59 +117,7 @@ function BoardView:layout()
     self.column_count = #columns
     local last = math.min(#columns, first + self.per_page - 1)
 
-    local footer_text
-    if self.moving_card then
-        footer_text = _("Tap a column header to move the card")
-    elseif #columns == 0 then
-        footer_text = _("No columns")
-    elseif first == last then
-        footer_text = T(_("Column %1 of %2"), first, #columns)
-    else
-        footer_text = T(_("Columns %1–%2 of %3"), first, last, #columns)
-    end
-    -- Chevrons like Menu's page footer: dimmed when there is nothing more that way.
-    local footer_info = TextWidget:new{
-        text = footer_text,
-        face = Font:getFace("x_smallinfofont"),
-        bold = self.moving_card ~= nil,
-    }
-    if #columns > 0 then
-        local chevron_left, chevron_right = "chevron.left", "chevron.right"
-        if BD.mirroredUILayout() then
-            chevron_left, chevron_right = chevron_right, chevron_left
-        end
-        local prev_chev = Button:new{
-            icon = chevron_left,
-            callback = function() self:onPrevColumns() end,
-            bordersize = 0,
-            show_parent = self,
-        }
-        local next_chev = Button:new{
-            icon = chevron_right,
-            callback = function() self:onNextColumns() end,
-            bordersize = 0,
-            show_parent = self,
-        }
-        prev_chev:enableDisable(first > 1)
-        next_chev:enableDisable(last < #columns)
-        local spacer = HorizontalSpan:new{ width = Screen:scaleBySize(32) }
-        footer_info = HorizontalGroup:new{
-            prev_chev, spacer, footer_info, spacer, next_chev,
-        }
-    end
-    local footer = VerticalGroup:new{
-        LineWidget:new{
-            dimen = Geom:new{ w = self.dimen.w - 2 * Size.padding.large, h = Size.line.thin },
-            background = Blitbuffer.COLOR_DARK_GRAY,
-        },
-        CenterContainer:new{
-            dimen = Geom:new{
-                w = self.dimen.w,
-                h = math.max(Screen:scaleBySize(32), footer_info:getSize().h),
-            },
-            footer_info,
-        },
-    }
+    local footer = self:buildFooter(board, first, last)
 
     local body_h = self.dimen.h - self.title_bar:getSize().h - footer:getSize().h
     local body
@@ -197,13 +161,12 @@ function BoardView:buildColumns(board, first, last, body_h)
     local text_w = col_w - 2 * (card_border + card_pad)
     local title_face = Font:getFace("cfont", 18)
     local line_h = TextBoxWidget:new{ text = "", width = text_w, face = title_face }:getLineHeight()
-    local card_h = TITLE_LINES * line_h + 2 * (card_border + card_pad)
 
     local header_h = Screen:scaleBySize(36)
     local header_rule = Size.line.thick * 2
     local pager_h = Screen:scaleBySize(28)
-    local cards_h = body_h - outer - header_h - header_rule - card_gap - pager_h
-    local per_column = math.max(1, math.floor((cards_h + card_gap) / (card_h + card_gap)))
+    local pager_gap = card_gap
+    local cards_h = body_h - outer - header_h - header_rule - card_gap - pager_gap - pager_h
 
     -- Quick-move: the picked card gets a heavy border and a light gray fill, and
     -- the headers it can be dropped on turn into solid black bars.
@@ -220,16 +183,53 @@ function BoardView:buildColumns(board, first, last, body_h)
         table.insert(self.column_rects, {
             id = column.id,
             rect = Geom:new{ x = x, y = top, w = col_w + gap, h = body_h },
-            per_column = per_column,
         })
 
         local count = #column.cards
-        local start = self.card_start[column.id] or 1
-        if start > count then
-            start = math.max(1, count - (count - 1) % per_column)
+        local title_lines = {}
+        local card_heights = {}
+        for position, card_id in ipairs(column.cards) do
+            local card = board.cards[card_id]
+            local lines, glyph_extra_height = measureTitleLines(
+                card.title, text_w, title_face, card_id == self.moving_card)
+            title_lines[card_id] = lines
+            card_heights[position] = lines * line_h + glyph_extra_height
+                + 2 * (card_border + card_pad)
         end
+        local pages = {}
+        local page_start, page_height
+        for position, card_h in ipairs(card_heights) do
+            local required_h = card_h + (page_height and card_gap or 0)
+            if page_height and page_height + required_h > cards_h then
+                table.insert(pages, { start = page_start, stop = position - 1 })
+                page_start = position
+                page_height = card_h
+            else
+                page_start = page_start or position
+                page_height = (page_height or 0) + required_h
+            end
+        end
+        if page_start then
+            table.insert(pages, { start = page_start, stop = count })
+        end
+
+        -- Normalize the requested card index to the variable-height page that
+        -- contains it, so edits and additions keep their target card visible.
+        local requested_start = self.card_start[column.id] or 1
+        local page_index = 1
+        for index, page in ipairs(pages) do
+            if requested_start <= page.stop then
+                page_index = index
+                break
+            end
+            page_index = index
+        end
+        local page = pages[page_index]
+        local start = page and page.start or 1
+        local stop = page and page.stop or 0
         self.card_start[column.id] = start
-        local stop = math.min(count, start + per_column - 1)
+        self.column_rects[#self.column_rects].pages = pages
+        self.column_rects[#self.column_rects].page_index = page_index
 
         local is_target = self.moving_card ~= nil and column ~= moving_column
         local ink = is_target and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK
@@ -292,7 +292,7 @@ function BoardView:buildColumns(board, first, last, body_h)
                 radius = Size.radius.window,
                 padding = card_pad,
                 CenterContainer:new{
-                    dimen = Geom:new{ w = text_w, h = card_h - 2 * (card_border + card_pad) },
+                    dimen = Geom:new{ w = text_w, h = line_h },
                     TextWidget:new{
                         text = _("No cards"),
                         face = Font:getFace("x_smallinfofont"),
@@ -304,12 +304,13 @@ function BoardView:buildColumns(board, first, last, body_h)
         for position = start, stop do
             local card = board.cards[column.cards[position]]
             local picked = card.id == self.moving_card
+            local title_h = title_lines[card.id] * line_h
             local title = TextBoxWidget:new{
                 text = card.title,
                 face = title_face,
                 bold = picked,
                 width = text_w,
-                height = TITLE_LINES * line_h,
+                height = title_h,
                 height_overflow_show_ellipsis = true,
                 bgcolor = picked and Blitbuffer.COLOR_LIGHT_GRAY or Blitbuffer.COLOR_WHITE,
             }
@@ -346,12 +347,13 @@ function BoardView:buildColumns(board, first, last, body_h)
             end
         end
 
-        -- Cards end at a fixed line so the pager sits at the bottom of every column.
+        -- Leave flexible space after the cards so the pager sits at the bottom.
         local used = group:getSize().h
-        table.insert(group, VerticalSpan:new{ width = body_h - pager_h - used })
+        table.insert(group, VerticalSpan:new{ width = body_h - pager_gap - pager_h - used })
+        table.insert(group, VerticalSpan:new{ width = pager_gap })
         local pager = CenterContainer:new{
             dimen = Geom:new{ w = col_w, h = pager_h },
-            count > per_column and TextWidget:new{
+            #pages > 1 and TextWidget:new{
                 text = T(_("Cards %1–%2 of %3"), start, stop, count),
                 face = Font:getFace("xx_smallinfofont"),
             } or VerticalSpan:new{ width = 0 },
@@ -365,6 +367,137 @@ function BoardView:buildColumns(board, first, last, body_h)
         end
     end
     return row
+end
+
+function BoardView:buildFooter(board, first, last)
+    local row_width = self.dimen.w - 2 * Size.padding.large
+    local row_height = Screen:scaleBySize(40)
+    local row_items = {}
+    local columns = board and board.columns or {}
+
+    local function addChevron(icon, enabled, callback, width)
+        local button = Button:new{
+            icon = icon,
+            icon_width = Screen:scaleBySize(20),
+            icon_height = Screen:scaleBySize(20),
+            width = width,
+            height = row_height - 2 * Size.border.button,
+            padding_h = 0,
+            padding_v = 0,
+            bordersize = Size.border.button,
+            callback = callback,
+            show_parent = self,
+        }
+        button:enableDisable(enabled)
+        table.insert(row_items, button)
+    end
+
+    if self.moving_card and #columns > 0 then
+        local left, right = "chevron.left", "chevron.right"
+        if BD.mirroredUILayout() then
+            left, right = right, left
+        end
+        local arrow_width = Screen:scaleBySize(40)
+        local spacer = HorizontalSpan:new{ width = Screen:scaleBySize(20) }
+        addChevron(left, first > 1, function() self:onPrevColumns() end, arrow_width)
+        table.insert(row_items, spacer)
+        table.insert(row_items, TextWidget:new{
+            text = _("Tap a column header to move the card"),
+            face = Font:getFace("x_smallinfofont"),
+            bold = true,
+        })
+        table.insert(row_items, spacer)
+        addChevron(right, last < #columns, function() self:onNextColumns() end, arrow_width)
+    elseif #columns == 0 then
+        table.insert(row_items, TextWidget:new{
+            text = _("No columns"),
+            face = Font:getFace("x_smallinfofont"),
+        })
+    else
+        local show_all_tabs = #columns * Screen:scaleBySize(MIN_TAB_WIDTH) <= row_width
+        local tab_first = show_all_tabs and 1 or first
+        local tab_last = show_all_tabs and #columns or last
+        local tab_count = tab_last - tab_first + 1
+        local arrow_width = show_all_tabs and 0 or Screen:scaleBySize(40)
+        local tab_space = row_width - 2 * arrow_width
+        local tab_width = math.floor(tab_space / tab_count)
+        local tab_font = Font:getFace("smallinfofont", 16)
+        local tab_padding_h = Size.padding.small
+        local tab_inner_padding = tab_padding_h + Size.border.button
+        local count_gap = Screen:scaleBySize(8)
+
+        if not show_all_tabs then
+            local left, right = "chevron.left", "chevron.right"
+            if BD.mirroredUILayout() then
+                left, right = right, left
+            end
+            addChevron(left, first > 1, function() self:onPrevColumns() end, arrow_width)
+        end
+
+        for index = tab_first, tab_last do
+            local column = columns[index]
+            local this_width = index == tab_last and tab_space - tab_width * (tab_count - 1) or tab_width
+            local count_text = tostring(#column.cards)
+            local count_widget = TextWidget:new{
+                text = count_text,
+                face = tab_font,
+                bold = true,
+                padding = 0,
+            }
+            local name_width = this_width - 2 * tab_inner_padding - count_widget:getSize().w - count_gap
+            local name_widget = TextWidget:new{
+                text = column.name,
+                face = tab_font,
+                bold = true,
+                padding = 0,
+                max_width = math.max(0, name_width),
+            }
+            local name, truncated = name_widget:getFittedText()
+            if truncated then
+                name = name .. "…"
+            end
+            local tab = Button:new{
+                text = name .. " " .. count_text,
+                text_font_face = "smallinfofont",
+                text_font_size = 16,
+                text_font_bold = true,
+                avoid_text_truncation = false,
+                width = this_width,
+                height = row_height - 2 * (Size.padding.small + Size.border.button),
+                padding_h = tab_padding_h,
+                padding_v = Size.padding.small,
+                bordersize = Size.border.button,
+                preselect = index >= first and index <= last,
+                callback = function()
+                    self:revealColumn(index)
+                    self:refresh()
+                end,
+                show_parent = self,
+            }
+            table.insert(row_items, tab)
+        end
+
+        if not show_all_tabs then
+            local left, right = "chevron.left", "chevron.right"
+            if BD.mirroredUILayout() then
+                left, right = right, left
+            end
+            addChevron(right, last < #columns, function() self:onNextColumns() end, arrow_width)
+        end
+    end
+
+    local footer_info = HorizontalGroup:new(row_items)
+    local footer_h = math.max(row_height, footer_info:getSize().h)
+    return VerticalGroup:new{
+        LineWidget:new{
+            dimen = Geom:new{ w = self.dimen.w - 2 * Size.padding.large, h = Size.line.thin },
+            background = Blitbuffer.COLOR_DARK_GRAY,
+        },
+        CenterContainer:new{
+            dimen = Geom:new{ w = self.dimen.w, h = footer_h },
+            footer_info,
+        },
+    }
 end
 
 function BoardView:refresh()
@@ -391,10 +524,9 @@ end
 function BoardView:pageCards(pos, step)
     for _, column in ipairs(self.column_rects or {}) do
         if column.rect:contains(pos) then
-            local count = #self:findColumn(column.id).cards
-            local start = self.card_start[column.id] + step * column.per_column
-            if start >= 1 and start <= count then
-                self.card_start[column.id] = start
+            local page = column.pages[column.page_index + step]
+            if page then
+                self.card_start[column.id] = page.start
                 self:refresh()
             end
             return
@@ -433,10 +565,7 @@ function BoardView:revealCard(column_id, index)
         return
     end
     self:revealColumn(column_index)
-    local per_column = self.column_rects and self.column_rects[1] and self.column_rects[1].per_column
-    if per_column then
-        self.card_start[column_id] = math.floor((index - 1) / per_column) * per_column + 1
-    end
+    self.card_start[column_id] = index
 end
 
 -- Start from the first column after switching boards.

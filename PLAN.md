@@ -263,10 +263,10 @@ list exists in `cards`. Indexes are clamped to the valid range.
   `verify-clean-install.png` and `verify-clean-install-done.png`.
 
 ### Phase 8: Layout
-- [ ] C1: size each card to its title (1–3 lines, still cut at 3 with "…"). Fill each
+- [x] C1: size each card to its title (1–3 lines, still cut at 3 with "…"). Fill each
       column page with as many cards as fit; card paging (`card_start`, swipe
       north/south, "Cards 1–10 of 14") follows the variable heights.
-- [ ] C2: replace the "‹ Columns 1–2 of 4 ›" footer with a row of column tabs showing
+- [x] C2: replace the "‹ Columns 1–2 of 4 ›" footer with a row of column tabs showing
       each column's name and card count (`Ideas 14`). The columns on screen are inverted
       (black fill, white text). Tapping a tab shows the page holding that column. Long
       names are cut so every tab fits; if the tabs can't fit, keep the chevrons at the
@@ -274,6 +274,20 @@ list exists in `cards`. Indexes are clamped to the valid range.
 - **Done when:** emulator captures at 600×800, 1264×1680 portrait and 1680×1264
   landscape show more cards per column than before (target: about 10 on 7" portrait
   with the seeded board), tabs for 4 and 7 columns, and a column with a 3-line title.
+- **Verified (2026-10-26, KOReader v2026.07.1):** after the pager-spacing fix,
+  inspected `.amp/in/artifacts/phase8-600x800.png`: the populated Ideas column has a
+  three-line title, the pager reads “Cards 1–9 of 14”, and the last card no longer
+  overlaps it. Reused the pre-rebase captures at 1264×1680 portrait and 1680×1264
+  landscape, as requested: `phase8-1264x1680-portrait.png` (all 14 cards fit) and
+  `phase8-1680x1264-landscape.png` (3 columns, 6 of 14 cards on page 1, seven tabs and
+  three-line title). Swiped to cards 11–14 (`phase8-card-paging-11-14.png`); tapped
+  tabs on 4- and 7-column boards (`phase8-tabs-4-columns.png` and
+  `phase8-tabs-long-name.png`, with the long label ellipsized without hiding its
+  count). In the emulator, ☰ → Today → Idea 11 opened the Ideas column at
+  “Cards 10–14 of 14” with Idea 11's action dialog (`phase8-today-card-page.png`).
+  Card and column dialogs, header quick-move, title-bar board switching, Rotate
+  screen, and rotation rebuild were also verified. No errors or crashes in
+  `crash.log`; `busted` passes (24 tests).
 
 ### Phase 9: Fewer taps
 - [ ] A1: the card dialog gets "← <previous column>" and "<next column> →" buttons
@@ -534,3 +548,15 @@ These add to the per-phase orb notes above.
   values of both keys (including a key that was absent) are restored on resume,
   startup, or when the option is turned off. The emulator pass is complete, but the
   owner still needs to check D1 on a device.
+- 2026-10-26: Phase 8 sizes cards from their measured wrapped title lines (up to
+  three) and greedily packs each column page by actual card heights plus gaps. Card
+  swipes move between these calculated page ranges, and the pager reports the visible
+  range rather than a fixed card count. Reserve a card-gap spacer before its fixed
+  pager row, and include `TextBoxWidget`'s extra glyph-buffer height in each measured
+  card height; without that extra height, stacked cards can extend into the pager.
+- 2026-10-26: Phase 8 replaces the column-range footer with named, counted tabs. If
+  every tab can fit at the minimum scaled width, show them all; otherwise show the
+  current column page's tabs between chevrons. The visible columns are inverted,
+  tapping another tab reveals its column page, and long names are ellipsized while
+  retaining the count. Quick-move keeps its existing prompt and chevrons instead of
+  the tabs.
