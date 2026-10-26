@@ -63,18 +63,18 @@ The repository root is not the plugin. To install, copy `kanban.koplugin/` into
    but can't be read, back it up to `kanban.lua.bak` before writing a new file.
 7. Use `logger` (`require("logger")`) for diagnostics. Don't use `print`.
 
-## Data model (schema version 1)
+## Data model (schema version 2)
 
 ```lua
 {
-  version = 1,
+  version = 2,
   current_board = "b1",            -- id of the board opened last
   boards = {                       -- array; order = board list order
     {
       id = "b1",
       name = "My board",
       columns = {                  -- array; order = left-to-right
-        { id = "c1", name = "To Do", cards = { --[[card ids in order]] } },
+        { id = "c1", name = "To Do", cards = { --[[card ids in order]] }, collapsed = false },
       },
       cards = {                    -- map id -> card
         k1 = {
@@ -83,7 +83,9 @@ The repository root is not the plugin. To install, copy `kanban.koplugin/` into
           notes = "",
           created = 1730000000,     -- os.time()
           updated = 1730000000,
+          moved = 1730000000,       -- last time the card changed columns
           archived = false,
+          checklist = { { text = "Read the chapter", done = false } },
         },
       },
       archived = { --[[card ids]] },
@@ -96,9 +98,11 @@ The repository root is not the plugin. To install, copy `kanban.koplugin/` into
 Model operations (each returns `true` or `nil, err`): `newState`, `addBoard`,
 `renameBoard`, `deleteBoard`, `addColumn(board, name, index?)`, `renameColumn`,
 `moveColumn(board, col_id, new_index)`, `deleteColumn` (archives its cards),
-`addCard(board, col_id, fields, index?)`, `editCard`,
-`moveCard(board, card_id, to_col_id, index?)` (with no index, append),
-`archiveCard`, `restoreCard(board, card_id, col_id)`.
+`addCard(board, col_id, fields, index?, clock?)`, `editCard`,
+`moveCard(board, card_id, to_col_id, index?, clock?)` (with no index, append),
+`addChecklistItem`, `editChecklistItem`, `toggleChecklistItem`, `deleteChecklistItem`,
+`moveChecklistItem`, `setColumnCollapsed`, `archiveCard`, and
+`restoreCard(board, card_id, col_id)`.
 
 Invariants (tests must check these after every operation): each card id appears in
 exactly one column's `cards` list or in `archived`, never in two places. Every id in a
@@ -300,9 +304,9 @@ list exists in `cards`. Indexes are clamped to the valid range.
   tries it on their device and records how responsive it is.
 
 ### Phase 11: Card detail (data model version 2)
-- [ ] Schema version 2: cards gain `checklist = { { text, done } }`, columns gain
-      `collapsed`. `Storage.migrate` upgrades version 1 files; specs cover the migration
-      and a round trip.
+- [x] Schema version 2: cards gain `checklist = { { text, done } }`, `moved`; columns
+      gain `collapsed`. `Storage.migrate` upgrades version 1 files; specs cover the
+      migration and a round trip.
 - [ ] E1: tapping a card opens a full-screen card view: title, all notes (scrollable),
       the checklist (tap an item to tick it, add/edit/delete items), and the card
       actions from phase 9.
@@ -440,3 +444,19 @@ Ideas the owner wants to keep but not build yet:
   through all four rotations.
 - 2026-10-26: Amp's `low` mode now uses GPT-6 Luna, which accepts images, so the
   2026-10-25 rule against giving it screenshot phases no longer applies.
+- 2026-10-26: Schema v2 uses an ordered `card.checklist` array of `{ text, done }`
+  items, `card.moved` (initialized with `created`, reset only when a move changes
+  columns), and `column.collapsed` (default `false`). Migration preserves all v1
+  fields, defaults missing checklists/collapse flags, and derives a missing `moved`
+  from `updated`, then `created`, then `0`. When `Storage.load` reads a v1 file, it
+  first copies it to `kanban.lua.v1.bak` (once; an existing backup is kept), so the
+  first v2 save can't lose it. A failed backup is logged, not fatal.
+- 2026-10-26: Checklist operations use 1-based array positions and trim/reject empty
+  item text. The UI-facing signatures are
+  `Model.addChecklistItem(board, card_id, text, index?, clock?)`,
+  `Model.editChecklistItem(board, card_id, item_index, text, clock?)`,
+  `Model.toggleChecklistItem(board, card_id, item_index, clock?)`,
+  `Model.deleteChecklistItem(board, card_id, item_index, clock?)`,
+  `Model.moveChecklistItem(board, card_id, item_index, new_index, clock?)`, and
+  `Model.setColumnCollapsed(board, column_id, collapsed)`. Checklist mutations update
+  `card.updated`; add/move indexes clamp to the valid range.

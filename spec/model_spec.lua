@@ -29,15 +29,18 @@ local function assert_invariants(state)
 end
 
 describe("kanban model", function()
-    it("creates the schema v1 default state", function()
+    it("creates the schema v2 default state", function()
         local state = Model.newState()
-        assert.equals(1, state.version)
+        assert.equals(2, state.version)
         assert.equals("b1", state.current_board)
         assert.same({ "To Do", "Doing", "Done" }, {
             state.boards[1].columns[1].name,
             state.boards[1].columns[2].name,
             state.boards[1].columns[3].name,
         })
+        for _, column in ipairs(state.boards[1].columns) do
+            assert.is_false(column.collapsed)
+        end
         assert_invariants(state)
     end)
 
@@ -58,12 +61,16 @@ describe("kanban model", function()
     it("selects boards and keeps the last board", function()
         local state = Model.newState()
         Model.addBoard(state, "Ideas")
+        assert_invariants(state)
         assert.is_true(Model.selectBoard(state, "b1"))
         assert.equals("b1", state.current_board)
+        assert_invariants(state)
         assert.is_nil(Model.selectBoard(state, "b9"))
         assert.equals("b1", state.current_board)
+        assert_invariants(state)
         assert.is_true(Model.deleteBoard(state, "b1"))
         assert.equals("b2", state.current_board)
+        assert_invariants(state)
         local ok, err = Model.deleteBoard(state, "b2")
         assert.is_nil(ok)
         assert.equals("cannot delete the last board", err)
@@ -77,6 +84,7 @@ describe("kanban model", function()
         assert.is_true(Model.addColumn(board, "Later", 1))
         local column_id = board.columns[1].id
         assert.equals("Later", board.columns[1].name)
+        assert.is_false(board.columns[1].collapsed)
         assert_invariants(state)
         assert.is_true(Model.renameColumn(board, column_id, "Someday"))
         assert_invariants(state)
@@ -98,6 +106,8 @@ describe("kanban model", function()
         assert.is_true(Model.addCard(board, todo, { title = "first" }, -10, 12))
         assert.same({ "k5", "k4" }, board.columns[1].cards)
         assert.equals(11, board.cards.k4.created)
+        assert.equals(11, board.cards.k4.moved)
+        assert.same({}, board.cards.k4.checklist)
         assert_invariants(state)
     end)
 
@@ -112,6 +122,131 @@ describe("kanban model", function()
         assert.equals("note", board.cards.k4.notes)
         assert.equals(10, board.cards.k4.created)
         assert.equals(20, board.cards.k4.updated)
+        assert_invariants(state)
+    end)
+
+    it("adds, edits, toggles, and deletes checklist items", function()
+        local state = Model.newState()
+        local board = state.boards[1]
+        assert.is_true(Model.addCard(board, board.columns[1].id, { title = "Prepare release" }, nil, 10))
+        assert_invariants(state)
+
+        assert.is_true(Model.addChecklistItem(board, "k4", "  Update notes  ", nil, 11))
+        assert.same({ { text = "Update notes", done = false } }, board.cards.k4.checklist)
+        assert.equals(11, board.cards.k4.updated)
+        assert_invariants(state)
+        assert.is_true(Model.addChecklistItem(board, "k4", "Run tests", 1, 12))
+        assert.same({
+            { text = "Run tests", done = false },
+            { text = "Update notes", done = false },
+        }, board.cards.k4.checklist)
+        assert_invariants(state)
+
+        local ok, err = Model.addChecklistItem(board, "k4", "  ", nil, 13)
+        assert.is_nil(ok)
+        assert.equals("checklist item text is required", err)
+        assert.equals(12, board.cards.k4.updated)
+        assert_invariants(state)
+
+        assert.is_true(Model.editChecklistItem(board, "k4", 1, "  Run the suite  ", 14))
+        assert.equals("Run the suite", board.cards.k4.checklist[1].text)
+        assert.equals(14, board.cards.k4.updated)
+        assert_invariants(state)
+        ok, err = Model.editChecklistItem(board, "k4", 1, " ", 15)
+        assert.is_nil(ok)
+        assert.equals("checklist item text is required", err)
+        assert.equals("Run the suite", board.cards.k4.checklist[1].text)
+        assert.equals(14, board.cards.k4.updated)
+        assert_invariants(state)
+
+        assert.is_true(Model.toggleChecklistItem(board, "k4", 1, 16))
+        assert.is_true(board.cards.k4.checklist[1].done)
+        assert.equals(16, board.cards.k4.updated)
+        assert_invariants(state)
+        assert.is_true(Model.deleteChecklistItem(board, "k4", 1, 17))
+        assert.same({ { text = "Update notes", done = false } }, board.cards.k4.checklist)
+        assert.equals(17, board.cards.k4.updated)
+        assert_invariants(state)
+
+        ok, err = Model.toggleChecklistItem(board, "k4", 9, 18)
+        assert.is_nil(ok)
+        assert.equals("checklist item not found", err)
+        assert_invariants(state)
+        ok, err = Model.deleteChecklistItem(board, "k9", 1, 19)
+        assert.is_nil(ok)
+        assert.equals("card not found", err)
+        assert_invariants(state)
+    end)
+
+    it("moves checklist items with clamped indexes", function()
+        local state = Model.newState()
+        local board = state.boards[1]
+        assert.is_true(Model.addCard(board, board.columns[1].id, { title = "Prepare release" }, nil, 10))
+        assert_invariants(state)
+        for index, text in ipairs({ "First", "Second", "Third" }) do
+            assert.is_true(Model.addChecklistItem(board, "k4", text, nil, 10 + index))
+            assert_invariants(state)
+        end
+
+        assert.is_true(Model.moveChecklistItem(board, "k4", 3, 1, 20))
+        assert.same({ "Third", "First", "Second" }, {
+            board.cards.k4.checklist[1].text,
+            board.cards.k4.checklist[2].text,
+            board.cards.k4.checklist[3].text,
+        })
+        assert.equals(20, board.cards.k4.updated)
+        assert_invariants(state)
+        assert.is_true(Model.moveChecklistItem(board, "k4", 1, 999, 21))
+        assert.same({ "First", "Second", "Third" }, {
+            board.cards.k4.checklist[1].text,
+            board.cards.k4.checklist[2].text,
+            board.cards.k4.checklist[3].text,
+        })
+        assert.equals(21, board.cards.k4.updated)
+        assert_invariants(state)
+        local ok, err = Model.moveChecklistItem(board, "k4", 4, 1, 22)
+        assert.is_nil(ok)
+        assert.equals("checklist item not found", err)
+        assert_invariants(state)
+    end)
+
+    it("sets a column's collapsed state", function()
+        local state = Model.newState()
+        local board = state.boards[1]
+        local column_id = board.columns[1].id
+        assert.is_true(Model.setColumnCollapsed(board, column_id, true))
+        assert.is_true(board.columns[1].collapsed)
+        assert_invariants(state)
+        assert.is_true(Model.setColumnCollapsed(board, column_id, false))
+        assert.is_false(board.columns[1].collapsed)
+        assert_invariants(state)
+        local ok, err = Model.setColumnCollapsed(board, column_id, "yes")
+        assert.is_nil(ok)
+        assert.equals("collapsed must be a boolean", err)
+        assert.is_false(board.columns[1].collapsed)
+        assert_invariants(state)
+        ok, err = Model.setColumnCollapsed(board, "c99", true)
+        assert.is_nil(ok)
+        assert.equals("column not found", err)
+        assert_invariants(state)
+    end)
+
+    it("updates moved only when a card changes columns", function()
+        local state = Model.newState()
+        local board = state.boards[1]
+        local todo, doing = board.columns[1].id, board.columns[2].id
+        assert.is_true(Model.addCard(board, todo, { title = "Task" }, nil, 10))
+        assert.equals(10, board.cards.k4.moved)
+        assert_invariants(state)
+
+        assert.is_true(Model.moveCard(board, "k4", todo, 1, 20))
+        assert.equals(10, board.cards.k4.moved)
+        assert_invariants(state)
+        assert.is_true(Model.moveCard(board, "k4", doing, nil, 30))
+        assert.equals(30, board.cards.k4.moved)
+        assert_invariants(state)
+        assert.is_true(Model.moveCard(board, "k4", doing, 1, 40))
+        assert.equals(30, board.cards.k4.moved)
         assert_invariants(state)
     end)
 
