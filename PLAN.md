@@ -340,9 +340,18 @@ list exists in `cards`. Indexes are clamped to the valid range.
   their device.
 
 ### Phase 14: Across boards and Markdown
-- [ ] F3: a "Today" view from the board menu and a Dispatcher action, listing the cards
+- [x] F3: a "Today" view from the board menu and a Dispatcher action, listing the cards
       in every board's in-progress columns (by default, the second-to-last column;
       configurable per board), grouped by board. Tapping a card opens it.
+- **Verified (2026-10-26, KOReader v2026.07.1, 600×800):** Today opens from the board
+  menu and from the `kanban_today` gesture in both File Manager and Reader. With two
+  boards, the default Doing column is empty on My board and Release board uses its
+  changed To Do column to show “Prepare release notes”. Tapping it opens Release board
+  on To Do with the existing card actions dialog. No errors in `crash.log`; `busted`
+  passes (20 tests). Inspected captures: `.amp/in/artifacts/phase14-today-fm-default-empty.png`,
+  `phase14-today-board-menu-empty.png`, `phase14-today-column-setting.png`,
+  `phase14-today-two-boards.png`, `phase14-today-card-actions.png`, and
+  `phase14-today-reader-gesture.png`.
 - [ ] F7: export a board to Markdown in the home folder (columns as headings, cards as
       list items, checklists as `- [ ]`), and import such a file as a new board.
 - **Done when:** export then import gives an identical board (spec), and the Today view
@@ -475,4 +484,14 @@ Ideas the owner wants to keep but not build yet:
   with a destination state it adds a board through `Model.addBoard`, and without one
   it builds a standalone board from `Model.newState`. Optional `clock` is forwarded to
   Model card/checklist operations for deterministic timestamps. Phase 14 F7 remains
-  unchecked until its UI, file writing and Today view work is complete.
+  unchecked until its UI and file writing are done.
+- 2026-10-26: F3 stores the selected in-progress column by ID in `board.today_column`,
+  with no schema version bump. When the ID is absent or no longer valid, Today uses
+  the second-to-last column (the only column when there is one); a board with no
+  columns has no in-progress column. Deleting the selected column clears its ID so
+  the default applies again.
+- 2026-10-26: The column actions dialog marks the board's in-progress column for
+  Today. Today is a scrollable, grouped list that keeps empty boards visible; tapping
+  a card selects its board, opens the board at that card's column page, then shows the
+  existing card actions dialog. When Today was opened from a board's menu, that board
+  view is closed first so board views don't stack.

@@ -249,6 +249,7 @@ end
 function CardDialog.showColumnActions(view, column_id)
     local board = view:getBoard()
     local column, index = view:findColumn(column_id)
+    local today_column = Model.getTodayColumn(board)
     local dialog
     local function action(fn)
         return function()
@@ -291,6 +292,13 @@ function CardDialog.showColumnActions(view, column_id)
                     end),
                 },
             },
+            { {
+                text = _("Use as in-progress column for Today"),
+                checked_func = function() return today_column == column end,
+                callback = action(function()
+                    view:commit(function() return Model.setTodayColumn(board, column_id) end)
+                end),
+            } },
             {
                 {
                     text = _("Move left"),
@@ -528,6 +536,17 @@ function CardDialog.showBoardMenu(view)
                             end)
                         end,
                     }
+                end),
+            } },
+            { {
+                text = _("Today"),
+                callback = action(function()
+                    local TodayView = require("todayview")
+                    UIManager:show(TodayView:new{
+                        state = view.state,
+                        ui = view.ui,
+                        board_view = view,
+                    }, "full")
                 end),
             } },
             { {

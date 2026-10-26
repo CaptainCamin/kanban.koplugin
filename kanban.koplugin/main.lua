@@ -3,6 +3,7 @@ local CardDialog = require("carddialog")
 local Dispatcher = require("dispatcher")
 local InfoMessage = require("ui/widget/infomessage")
 local Storage = require("storage")
+local TodayView = require("todayview")
 local UIManager = require("ui/uimanager")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local _ = require("gettext")
@@ -30,6 +31,12 @@ function Kanban:onDispatcherRegisterActions()
         category = "none",
         event = "KanbanAddCard",
         title = _("Add Kanban card"),
+        general = true,
+    })
+    Dispatcher:registerAction("kanban_today", {
+        category = "none",
+        event = "KanbanToday",
+        title = _("Kanban: Today"),
         general = true,
     })
 end
@@ -65,6 +72,15 @@ function Kanban:onKanbanAddCard()
         return true
     end
     CardDialog.editCard(view, column.id)
+    return true
+end
+
+-- Show the cross-board in-progress list from the Dispatcher action.
+function Kanban:onKanbanToday()
+    UIManager:show(TodayView:new{
+        state = Storage.load(),
+        ui = self.ui,
+    }, "full")
     return true
 end
 

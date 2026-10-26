@@ -95,6 +95,45 @@ describe("kanban model", function()
         assert_invariants(state)
     end)
 
+    it("defaults and stores each board's in-progress column", function()
+        local state = Model.newState()
+        local board = state.boards[1]
+        local column, index = Model.getTodayColumn(board)
+        assert.equals("c2", column.id)
+        assert.equals(2, index)
+        assert.is_nil(board.today_column)
+
+        assert.is_true(Model.addColumn(board, "Later"))
+        column, index = Model.getTodayColumn(board)
+        assert.equals("c3", column.id)
+        assert.equals(3, index)
+
+        assert.is_true(Model.setTodayColumn(board, "c1"))
+        assert.is_true(Model.moveColumn(board, "c1", 4))
+        column, index = Model.getTodayColumn(board)
+        assert.equals("c1", column.id)
+        assert.equals(4, index)
+
+        local ok, err = Model.setTodayColumn(board, "c99")
+        assert.is_nil(ok)
+        assert.equals("column not found", err)
+        assert.equals("c1", board.today_column)
+
+        assert.is_true(Model.deleteColumn(board, "c1"))
+        assert.is_nil(board.today_column)
+        column, index = Model.getTodayColumn(board)
+        assert.equals("c3", column.id)
+        assert.equals(2, index)
+
+        board.columns = { board.columns[1] }
+        column, index = Model.getTodayColumn(board)
+        assert.equals(board.columns[1], column)
+        assert.equals(1, index)
+        board.columns = {}
+        assert.is_nil(Model.getTodayColumn(board))
+        assert_invariants(state)
+    end)
+
     it("clamps card insertion indexes and rejects empty titles", function()
         local state = Model.newState()
         local board = state.boards[1]

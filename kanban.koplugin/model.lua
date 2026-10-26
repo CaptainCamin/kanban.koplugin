@@ -37,6 +37,26 @@ local function find_column(board, column_id)
     end
 end
 
+function Model.getTodayColumn(board)
+    local column, index = find_column(board, board.today_column)
+    if column then
+        return column, index
+    end
+    if #board.columns == 0 then
+        return nil
+    end
+    index = math.max(1, #board.columns - 1)
+    return board.columns[index], index
+end
+
+function Model.setTodayColumn(board, column_id)
+    if not find_column(board, column_id) then
+        return nil, "column not found"
+    end
+    board.today_column = column_id
+    return true
+end
+
 local function find_id(list, id)
     for index, value in ipairs(list) do
         if value == id then
@@ -184,6 +204,9 @@ function Model.deleteColumn(board, column_id)
         table.insert(board.archived, card_id)
     end
     table.remove(board.columns, index)
+    if board.today_column == column_id then
+        board.today_column = nil
+    end
     return true
 end
 
