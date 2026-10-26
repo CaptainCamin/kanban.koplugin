@@ -422,7 +422,7 @@ function CardDialog.showBoards(view)
                 if board ~= current then
                     view:commit(function() return Model.selectBoard(state, board.id) end, function()
                         view:resetPosition()
-                    end, "flashui")
+                    end, "full")
                 end
             end),
         } })
@@ -439,7 +439,7 @@ function CardDialog.showBoards(view)
                     callback = function(name)
                         view:commit(function() return Model.addBoard(state, name) end, function()
                             view:resetPosition()
-                        end, "flashui")
+                        end, "full")
                     end,
                 }
             end),
@@ -481,7 +481,7 @@ function CardDialog.showBoards(view)
                     ok_callback = function()
                         view:commit(function() return Model.deleteBoard(state, current.id) end, function()
                             view:resetPosition()
-                        end, "flashui")
+                        end, "full")
                     end,
                 })
             end),
