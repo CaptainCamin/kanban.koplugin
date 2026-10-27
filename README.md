@@ -21,6 +21,9 @@ boards, columns, and cards. Cards are not linked to books.
   cards rather than deleting them.
 - Create, switch between, rename, and delete multiple boards. Tap the board name
   (marked ▼) in the title bar to open the Boards dialog.
+- Export the current board to Markdown in KOReader's home folder, or import a
+  Markdown file as a new board. Cards, notes, checklists, and archived cards are
+  included.
 - Open the board from **Tools → Kanban board → Open board** in both the File
   Manager and Reader, or bind any of these actions in Gesture manager:
   - **Open Kanban board**

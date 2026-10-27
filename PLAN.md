@@ -436,8 +436,19 @@ list exists in `cards`. Indexes are clamped to the valid range.
   `phase14-today-board-menu-empty.png`, `phase14-today-column-setting.png`,
   `phase14-today-two-boards.png`, `phase14-today-card-actions.png`, and
   `phase14-today-reader-gesture.png`.
-- [ ] F7: export a board to Markdown in the home folder (columns as headings, cards as
+- [x] F7: export a board to Markdown in the home folder (columns as headings, cards as
       list items, checklists as `- [ ]`), and import such a file as a new board.
+- **Verified (2026-10-27, KOReader v2026.07.1, 600×800):** exported the demo board
+  to `kanban-Demo board.md`, checked the headings, cards, notes and checklist text,
+  and confirmed a second export overwrote the file with identical content. Imported
+  it through the PathChooser; the new board was selected and saved (`current_board`
+  is `b2`), and re-exporting it matched the source Markdown exactly. Importing a
+  malformed file displayed “Card appears before a column heading”; the saved state
+  hash was unchanged. No errors or crashes in `crash.log` (the expected malformed
+  import warning was logged); `busted` passes (25 tests). Inspected captures:
+  `.amp/in/artifacts/phase14-md-menu.png`, `phase14-md-exported.png`,
+  `phase14-md-import-chooser.png`, `phase14-md-imported.png`, and
+  `phase14-md-malformed.png`.
 - **Done when:** export then import gives an identical board (spec), and the Today view
   works from the menu and a gesture.
 
@@ -672,3 +683,11 @@ These add to the per-phase orb notes above.
 - 2026-10-26: The Move to… and Restore destination buttons bind each destination in
   a per-iteration local and resolve their gettext message outside the generic-for loop;
   this avoids Lua 5.1 loop-variable capture and `_` shadowing in callbacks.
+- 2026-10-27: Markdown exports use the configured `home_dir`, falling back to
+  `Device.home_dir` when it is unset or invalid. Export filenames replace unsafe
+  characters, trim leading/trailing dots and spaces, and cap the board-name portion
+  at 240 bytes without splitting UTF-8 characters; an existing export is overwritten.
+- 2026-10-27: Markdown import uses KOReader's `PathChooser`, filtered to `.md` files.
+  A successful import is committed through the board view, which selects the new
+  board and saves it with a full refresh; an invalid Markdown document is rejected
+  without adding a board.

@@ -8,14 +8,20 @@ Every function takes the BoardView as `view`. Changes go through `Model` and
 
 local ButtonDialog = require("ui/widget/buttondialog")
 local ConfirmBox = require("ui/widget/confirmbox")
+local Device = require("device")
 local Font = require("ui/font")
 local InfoMessage = require("ui/widget/infomessage")
 local InputDialog = require("ui/widget/inputdialog")
 local Model = require("model")
+local Markdown = require("markdown")
 local MultiInputDialog = require("ui/widget/multiinputdialog")
+local PathChooser = require("ui/widget/pathchooser")
 local TextBoxWidget = require("ui/widget/textboxwidget")
 local UIManager = require("ui/uimanager")
-local T = require("ffi/util").template
+local ffiUtil = require("ffi/util")
+local lfs = require("libs/libkoreader-lfs")
+local logger = require("logger")
+local T = ffiUtil.template
 local _ = require("gettext")
 local N_ = _.ngettext
 
@@ -30,6 +36,124 @@ end
 local function showDialog(dialog)
     UIManager:show(dialog)
     return dialog
+end
+
+local function getHomeDirectory()
+    local home_dir = G_reader_settings:readSetting("home_dir")
+    if not home_dir or lfs.attributes(home_dir, "mode") ~= "directory" then
+        home_dir = Device.home_dir
+    end
+    return home_dir
+end
+
+local function safeBoardFilename(name)
+    local safe_name = name:gsub("[/\\:*?\"<>|]", "_"):gsub("%c", "_")
+    safe_name = safe_name:gsub("^%.*", ""):gsub("[%. ]+$", "")
+    if safe_name == "" then
+        safe_name = "board"
+    end
+
+    -- Keep the whole path component below common filesystem limits, without
+    -- cutting a multi-byte UTF-8 character in half.
+    local max_name_bytes = 240
+    if #safe_name > max_name_bytes then
+        local end_index = max_name_bytes
+        while end_index > 0 do
+            local byte = safe_name:byte(end_index)
+            if byte < 0x80 or byte >= 0xC0 then
+                local char_length = byte < 0x80 and 1
+                    or byte < 0xE0 and 2
+                    or byte < 0xF0 and 3
+                    or 4
+                if end_index + char_length - 1 > max_name_bytes then
+                    end_index = end_index - 1
+                end
+                break
+            end
+            end_index = end_index - 1
+        end
+        safe_name = safe_name:sub(1, end_index)
+    end
+    return safe_name
+end
+
+local function showMarkdownError(message)
+    UIManager:show(InfoMessage:new{ text = message })
+end
+
+local function exportBoard(board)
+    local home_dir = getHomeDirectory()
+    if not home_dir then
+        local err = "home directory is not available"
+        logger.warn("kanban: Markdown export failed:", err)
+        showMarkdownError(T(_("Could not export Markdown:\n%1"), err))
+        return
+    end
+
+    local filename = "kanban-" .. safeBoardFilename(board.name) .. ".md"
+    local path = ffiUtil.joinPath(home_dir, filename)
+    local file, err = io.open(path, "wb")
+    if not file then
+        logger.warn("kanban: Markdown export failed:", path, err)
+        showMarkdownError(T(_("Could not export Markdown:\n%1"), tostring(err)))
+        return
+    end
+
+    local ok
+    ok, err = file:write(Markdown.export(board))
+    if not ok then
+        file:close()
+        logger.warn("kanban: Markdown export failed:", path, err)
+        showMarkdownError(T(_("Could not export Markdown:\n%1"), tostring(err)))
+        return
+    end
+    ok, err = file:close()
+    if not ok then
+        logger.warn("kanban: Markdown export failed:", path, err)
+        showMarkdownError(T(_("Could not export Markdown:\n%1"), tostring(err)))
+        return
+    end
+    UIManager:show(InfoMessage:new{
+        text = T(_("Markdown exported to:\n%1"), path),
+    })
+end
+
+local function importBoard(view)
+    local home_dir = getHomeDirectory()
+    UIManager:show(PathChooser:new{
+        path = home_dir,
+        title = _("Choose a Markdown file"),
+        select_directory = false,
+        select_file = true,
+        show_files = true,
+        show_unsupported = false,
+        file_filter = function(filename)
+            return filename:lower():match("%.md$") ~= nil
+        end,
+        onConfirm = function(path)
+            local file, err = io.open(path, "rb")
+            if not file then
+                logger.warn("kanban: Markdown import failed:", path, err)
+                showMarkdownError(T(_("Could not read Markdown:\n%1"), tostring(err)))
+                return
+            end
+            local contents
+            contents, err = file:read("*a")
+            local close_ok, close_err = file:close()
+            if not contents or not close_ok then
+                err = err or close_err or "could not read file"
+                logger.warn("kanban: Markdown import failed:", path, err)
+                showMarkdownError(T(_("Could not read Markdown:\n%1"), tostring(err)))
+                return
+            end
+
+            view:commit(function()
+                return Markdown.import(contents, view.state)
+            end, function()
+                view:resetPosition()
+            end, "full")
+        end,
+    })
 end
 
 -- A one-line text prompt (column and board names).
@@ -624,6 +748,18 @@ function CardDialog.showBoardMenu(view)
                         ui = view.ui,
                         board_view = view,
                     }, "full")
+                end),
+            } },
+            { {
+                text = _("Export to Markdown"),
+                callback = action(function()
+                    exportBoard(board)
+                end),
+            } },
+            { {
+                text = _("Import from Markdown…"),
+                callback = action(function()
+                    importBoard(view)
                 end),
             } },
             { {
