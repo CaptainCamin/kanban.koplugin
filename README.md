@@ -18,6 +18,10 @@ boards, columns, and cards. Cards are not linked to books.
   an **Undo** button for a few seconds, and the board menu (☰) always has
   **Undo: <change>**, even after a restart. The card dialog also has
   previous/next column buttons and Move to top/bottom.
+- Cards show small markers: ¶ when they have notes, ☑ done/total for a
+  checklist, and how many days they've been in their column.
+- Collapse a column (column dialog) into a narrow strip to fit more columns on
+  screen; tap the strip to expand it.
 - Restore archived cards to a selected column. Deleting a column archives its
   cards rather than deleting them.
 - Create, switch between, rename, and delete multiple boards. Tap the board name

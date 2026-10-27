@@ -398,11 +398,30 @@ list exists in `cards`. Indexes are clamped to the valid range.
   `phase11-cardview-checklist-restarted.png`,
   `phase11-cardview-no-notes.png`, `phase11-cardview-action-moved.png`,
   `phase11-cardview-action-archived.png`, and `phase11-cardview-from-today.png`.
-- [ ] C4: small markers on board cards: ¶ when it has notes, ☑ done/total for the
+- [x] C4: small markers on board cards: ¶ when it has notes, ☑ done/total for the
       checklist, and days in the current column (needs a `moved` timestamp, set by
       `addCard`/`moveCard`).
-- [ ] C6: collapse a column (column dialog) into a narrow strip with its name and count;
+- [x] C6: collapse a column (column dialog) into a narrow strip with its name and count;
       tap it to expand. Collapsed columns take less room, so more columns fit a page.
+- **Verified C4/C6 and CardView integration (2026-10-27, KOReader v2026.07.1 AppImage):**
+  inspected 600×800 and 1680×1264 landscape captures for notes-only, checklist-only,
+  days-only, combined and marker-free cards. A 3-day-old `moved` value shows `3d`;
+  cards younger than one complete day omit the age marker. Collapsing Blocked through
+  its column dialog produced a counted strip between expanded columns; tapping the
+  strip expanded it again. The mixed-width page showed three columns at 600×800 and
+  four at 1680×1264. Hold-and-lift then tapping the strip, dragging onto the strip,
+  and dragging onto its tab each appended a card while preserving `collapsed = true`.
+  After restarting KOReader, the collapsed flag and appended cards remained saved.
+  Tapping a checklist-marked card opened CardView; checking the remaining item changed
+  its board marker from `☑ 1/2` to `☑ 2/2` after closing. `busted` passes (26 tests),
+  LuaJIT syntax checks pass, and `crash.log` has no ERROR/FATAL/CRASH/Traceback entries.
+  Inspected captures: `.amp/in/artifacts/phase11-markers-600x800.png`,
+  `phase11-markers-1680x1264.png`, `phase11-collapse-600x800.png`,
+  `phase11-collapse-expanded-600x800.png`, `phase11-collapse-1680x1264.png`,
+  `phase11-collapse-tab-drag.png`, `phase11-collapse-restart-600x800.png`,
+  `phase11-collapse-restart-1680x1264.png`,
+  `phase11-cardview-checklist.png`, `phase11-cardview-checklist-toggled.png`, and
+  `phase11-cardview-marker-updated.png`.
 - **Done when:** a version 1 file loads and upgrades without losing data, and captures
   show the card view, markers and a collapsed column.
 
@@ -713,3 +732,13 @@ These add to the per-phase orb notes above.
   operations through `BoardView:commit()`, retaining the existing save and one-level
   undo behavior. Board commits notify an open CardView to repaint. Today opens the
   same detail view after selecting and revealing its card.
+- 2026-10-27: C4 omits the marker row when a card has no notes, checklist or completed
+  day in its current column. A pure `Model.daysInColumn(moved, clock)` helper floors elapsed
+  seconds to complete 24-hour days, with the clock supplied by the caller for tests.
+  Marker rows are included in variable-height card packing.
+- 2026-10-27: C6 packs column pages by minimum widths: collapsed columns use a
+  `Screen:scaleBySize(48)` strip, expanded columns use a 220-scaled-pixel minimum, and
+  no page has more than three expanded columns. The slightly narrower minimum lets a
+  collapsed strip free enough room for another column on wide landscape screens.
+  Strips are not header/card-gap targets; drops on a strip are append operations, as
+  are drops on its tab, and neither changes the collapsed flag.

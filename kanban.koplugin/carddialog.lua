@@ -488,6 +488,16 @@ function CardDialog.showColumnActions(view, column_id)
                     view:commit(function() return Model.setTodayColumn(board, column_id) end)
                 end),
             } },
+            { {
+                text = column.collapsed and _("Expand") or _("Collapse"),
+                callback = action(function()
+                    view:commit(function()
+                        return Model.setColumnCollapsed(board, column_id, not column.collapsed)
+                    end, function()
+                        view:revealColumn(index)
+                    end)
+                end),
+            } },
             {
                 {
                     text = _("Move left"),

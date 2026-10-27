@@ -362,6 +362,15 @@ function Model.moveChecklistItem(board, card_id, item_index, new_index, clock)
     return true
 end
 
+-- Whole days since `moved` (a card's last column change), or nil below one day.
+function Model.daysInColumn(moved, clock)
+    if type(moved) ~= "number" then
+        return nil
+    end
+    local days = math.floor((now(clock) - moved) / 86400)
+    return days >= 1 and days or nil
+end
+
 function Model.setColumnCollapsed(board, column_id, collapsed)
     local column = find_column(board, column_id)
     if not column then
