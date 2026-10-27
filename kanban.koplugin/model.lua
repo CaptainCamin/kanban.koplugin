@@ -57,6 +57,22 @@ function Model.setTodayColumn(board, column_id)
     return true
 end
 
+function Model.setNowCard(board, card_id)
+    if card_id == nil then
+        board.now_card = nil
+        return true
+    end
+    local card = board.cards[card_id]
+    if not card then
+        return nil, "card not found"
+    end
+    if card.archived then
+        return nil, "card is archived"
+    end
+    board.now_card = card_id
+    return true
+end
+
 local function find_id(list, id)
     for index, value in ipairs(list) do
         if value == id then
@@ -229,6 +245,9 @@ function Model.deleteColumn(board, column_id)
     for _, card_id in ipairs(column.cards) do
         board.cards[card_id].archived = true
         table.insert(board.archived, card_id)
+        if board.now_card == card_id then
+            board.now_card = nil
+        end
     end
     table.remove(board.columns, index)
     if board.today_column == column_id then
@@ -427,6 +446,9 @@ function Model.archiveCard(board, card_id)
         table.insert(board.archived, card_id)
     end
     card.archived = true
+    if board.now_card == card_id then
+        board.now_card = nil
+    end
     return true
 end
 

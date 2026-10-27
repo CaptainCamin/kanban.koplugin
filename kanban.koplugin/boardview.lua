@@ -197,10 +197,53 @@ function BoardView:layout()
     local footer = self:buildFooter(board, first, last)
 
     local body_h = self.dimen.h - self.title_bar:getSize().h - footer:getSize().h
+    local now_card = board and board.now_card and board.cards[board.now_card]
+    local now_bar
+    local now_bar_gap = Size.padding.small
+    local columns_h = body_h
+    self.now_card_target = nil
+    self.columns_top = self.title_bar:getSize().h
+    if now_card and not now_card.archived then
+        local text = T(_("Now: %1"), now_card.title)
+        local bar_outer = Size.padding.large
+        local bar_border = Size.border.button
+        local bar_padding = Size.padding.large
+        local text_width = self.dimen.w - 2 * bar_outer - 2 * (bar_border + bar_padding)
+        local face = Font:getFace("infofont", 20)
+        local lines, glyph_extra_height = measureTitleLines(text, text_width, face, true)
+        local line_height = TextBoxWidget:new{ text = "", width = text_width, face = face }:getLineHeight()
+        now_bar = FrameContainer:new{
+            width = self.dimen.w - 2 * bar_outer,
+            bordersize = bar_border,
+            color = Blitbuffer.COLOR_BLACK,
+            radius = Size.radius.window,
+            padding = bar_padding,
+            background = Blitbuffer.COLOR_LIGHT_GRAY,
+            TextBoxWidget:new{
+                text = text,
+                face = face,
+                bold = true,
+                width = text_width,
+                height = lines * line_height + glyph_extra_height,
+                height_overflow_show_ellipsis = true,
+                bgcolor = Blitbuffer.COLOR_LIGHT_GRAY,
+            },
+        }
+        local now_bar_row = HorizontalGroup:new{
+            align = "top",
+            HorizontalSpan:new{ width = bar_outer },
+            now_bar,
+            HorizontalSpan:new{ width = bar_outer },
+        }
+        self.now_card_target = { { frame = now_bar, id = board.now_card } }
+        now_bar = now_bar_row
+        columns_h = math.max(1, body_h - now_bar:getSize().h - now_bar_gap)
+        self.columns_top = self.columns_top + now_bar:getSize().h + now_bar_gap
+    end
     local body
     if #columns == 0 then
         body = CenterContainer:new{
-            dimen = Geom:new{ w = self.dimen.w, h = body_h },
+            dimen = Geom:new{ w = self.dimen.w, h = columns_h },
             TextWidget:new{
                 text = _("This board has no columns."),
                 face = Font:getFace("infofont"),
@@ -208,7 +251,15 @@ function BoardView:layout()
             },
         }
     else
-        body = self:buildColumns(board, first, last, body_h)
+        body = self:buildColumns(board, first, last, columns_h)
+    end
+    if now_bar then
+        body = VerticalGroup:new{
+            align = "left",
+            now_bar,
+            VerticalSpan:new{ width = now_bar_gap },
+            body,
+        }
     end
 
     self[1] = FrameContainer:new{
@@ -242,7 +293,7 @@ function BoardView:buildColumns(board, first, last, body_h)
     local expanded_width = expanded_count > 0
         and math.floor((available_width - collapsed_count * collapsed_width) / expanded_count)
         or nil
-    local top = self.title_bar:getSize().h
+    local top = self.columns_top or self.title_bar:getSize().h
 
     local card_border = Size.border.button
     local card_pad = Size.padding.large
@@ -891,6 +942,11 @@ function BoardView:onTap(_, ges)
     local card_id = hit(self.card_targets, ges.pos)
     if card_id then
         CardView.show(self, card_id)
+        return true
+    end
+    local now_card_id = hit(self.now_card_target, ges.pos)
+    if now_card_id then
+        CardView.show(self, now_card_id)
         return true
     end
     local collapsed_column_id = hit(self.collapsed_targets, ges.pos)

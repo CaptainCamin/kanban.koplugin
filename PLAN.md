@@ -435,7 +435,7 @@ list exists in `cards`. Indexes are clamped to the valid range.
   refreshes only that column (checked by logging the refreshed regions).
 
 ### Phase 13: Now card and sleep screen
-- [ ] D2: pin one card as "Now" (card actions). It shows above the columns in bold;
+- [x] D2: pin one card as "Now" (card actions). It shows above the columns in bold;
       unpin from the same place. One per board.
 - [x] D1: opt-in "Show board on sleep screen" setting. On suspend, render the current
       board (or the Now card, if set) to a PNG in the settings dir and point the
@@ -452,6 +452,19 @@ list exists in `cards`. Indexes are clamped to the valid range.
   `phase13-sleep-board-open.png`, `phase13-sleep-board-resumed.png`,
   `phase13-sleep-setting-off.png`, `phase13-sleep-setting-off-suspend.png`, and
   `phase13-sleep-resumed.png`. The owner still needs to check this on a device.
+- **Verified D2 (2026-10-27, KOReader v2026.07.1 Emulator, 600×800):** pinned a
+  card, replaced it with a second, unpinned it, and archived a pinned card (which
+  removed the bar). Tapping the bar opened the card view. With a pinned card, F2
+  suspend showed the board and Now bar; resuming returned to the open board. The
+  pin remained after restarting KOReader. The sleep-screen option was turned off
+  through the Tools UI afterward; its setting and screensaver snapshot are cleared.
+  `busted` passes (29 tests), LuaJIT bytecode syntax checks pass, and `crash.log`
+  has no ERROR/FATAL/CRASH/Traceback entries. Inspected captures:
+  `.amp/in/artifacts/phase13-now-pinned.png`, `phase13-now-replaced.png`,
+  `phase13-now-unpinned.png`, `phase13-now-archive-clears.png`,
+  `phase13-now-tap-bar.png`, `phase13-now-sleep.png`,
+  `phase13-now-sleep-resumed.png`, `phase13-now-after-restart.png`, and
+  `phase13-now-sleep-setting-off.png`.
 - **Done when:** the setting works in the emulator's suspend flow, the previous
   screensaver settings come back when it's turned off, and the owner checks it on
   their device.
@@ -749,3 +762,9 @@ These add to the per-phase orb notes above.
   Sleep-screen option was turned off afterwards. No crash.log errors or commit-path
   require crash. Fixed the one-card pager to show translated “Card 11 of 11”. `busted`:
   25 successes. Inspected captures: `.amp/in/artifacts/combined-*.png`.
+- 2026-10-27: D2 stores the pinned card id as `board.now_card`, with no schema bump;
+  setting it validates that the card exists and is not archived, and archiving a
+  card or deleting its column clears the pin. The Now bar consumes vertical space
+  before the columns, so card-page packing uses the remaining height; the card stays
+  in its column. The sleep-screen render shows the full board with its Now bar rather
+  than rendering only the pinned card, reusing BoardView's existing off-screen renderer.

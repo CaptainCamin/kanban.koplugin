@@ -20,6 +20,8 @@ boards, columns, and cards. Cards are not linked to books.
   previous/next column buttons and Move to top/bottom.
 - Cards show small markers: ¶ when they have notes, ☑ done/total for a
   checklist, and how many days they've been in their column.
+- Pin one card as **Now** per board; it appears in a bold bar above the columns
+  and opens its detail view when tapped.
 - Collapse a column (column dialog) into a narrow strip to fit more columns on
   screen; tap the strip to expand it.
 - Restore archived cards to a selected column. Deleting a column archives its

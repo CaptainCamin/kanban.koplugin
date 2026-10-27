@@ -400,6 +400,18 @@ function CardDialog.showCardActions(view, card_id)
             },
         })
     end
+    table.insert(buttons, { {
+        text = board.now_card == card_id and _("Unpin Now") or _("Pin as Now"),
+        callback = action(function()
+            local now_card_id = card_id
+            if board.now_card == card_id then
+                now_card_id = nil
+            end
+            view:commit(function()
+                return Model.setNowCard(board, now_card_id)
+            end)
+        end),
+    } })
     table.insert(buttons, {
         {
             text = _("Archive"),

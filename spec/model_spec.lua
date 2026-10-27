@@ -38,6 +38,7 @@ describe("kanban model", function()
             state.boards[1].columns[2].name,
             state.boards[1].columns[3].name,
         })
+        assert.is_nil(state.boards[1].now_card)
         for _, column in ipairs(state.boards[1].columns) do
             assert.is_false(column.collapsed)
         end
@@ -131,6 +132,64 @@ describe("kanban model", function()
         assert.equals(1, index)
         board.columns = {}
         assert.is_nil(Model.getTodayColumn(board))
+        assert_invariants(state)
+    end)
+
+    it("pins, replaces, and clears a board's Now card", function()
+        local state = Model.newState()
+        local board = state.boards[1]
+        local todo = board.columns[1].id
+        assert.is_true(Model.addCard(board, todo, { title = "First" }))
+        assert.is_true(Model.addCard(board, todo, { title = "Second" }))
+        assert.is_true(Model.setNowCard(board, "k4"))
+        assert.equals(2, state.version)
+        assert.equals("k4", board.now_card)
+        assert_invariants(state)
+
+        assert.is_true(Model.setNowCard(board, "k5"))
+        assert.equals("k5", board.now_card)
+        assert_invariants(state)
+        assert.is_true(Model.setNowCard(board, nil))
+        assert.is_nil(board.now_card)
+        assert_invariants(state)
+    end)
+
+    it("rejects unknown and archived Now cards without replacing the pin", function()
+        local state = Model.newState()
+        local board = state.boards[1]
+        local todo = board.columns[1].id
+        assert.is_true(Model.addCard(board, todo, { title = "Pinned" }))
+        assert.is_true(Model.addCard(board, todo, { title = "Archived" }))
+        assert.is_true(Model.setNowCard(board, "k4"))
+        assert.is_true(Model.archiveCard(board, "k5"))
+
+        local ok, err = Model.setNowCard(board, "k99")
+        assert.is_nil(ok)
+        assert.equals("card not found", err)
+        assert.equals("k4", board.now_card)
+        assert_invariants(state)
+        ok, err = Model.setNowCard(board, "k5")
+        assert.is_nil(ok)
+        assert.equals("card is archived", err)
+        assert.equals("k4", board.now_card)
+        assert_invariants(state)
+    end)
+
+    it("clears the Now card when it is archived or its column is deleted", function()
+        local state = Model.newState()
+        local board = state.boards[1]
+        local todo = board.columns[1].id
+        assert.is_true(Model.addCard(board, todo, { title = "Archive me" }))
+        assert.is_true(Model.setNowCard(board, "k4"))
+        assert.is_true(Model.archiveCard(board, "k4"))
+        assert.is_nil(board.now_card)
+        assert_invariants(state)
+
+        local doing = board.columns[2].id
+        assert.is_true(Model.addCard(board, doing, { title = "Delete my column" }))
+        assert.is_true(Model.setNowCard(board, "k5"))
+        assert.is_true(Model.deleteColumn(board, doing))
+        assert.is_nil(board.now_card)
         assert_invariants(state)
     end)
 
