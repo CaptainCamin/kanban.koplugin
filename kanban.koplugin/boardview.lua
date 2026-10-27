@@ -3,6 +3,7 @@ local Blitbuffer = require("ffi/blitbuffer")
 local Button = require("ui/widget/button")
 local ButtonDialog = require("ui/widget/buttondialog")
 local CardDialog = require("carddialog")
+local CardView = require("cardview")
 local CardMove = require("cardmove")
 local CenterContainer = require("ui/widget/container/centercontainer")
 local Device = require("device")
@@ -642,6 +643,9 @@ function BoardView:commit(change, after, refresh_type, undo_message, defer_undo_
     end
     self:layout()
     UIManager:setDirty(self, refresh_type or "ui")
+    if self.card_view then
+        self.card_view:onBoardChanged()
+    end
     -- Only changes that name themselves (moves, archive, column delete, restore) pop up
     -- an Undo prompt; every change can still be undone from the board menu.
     if self.state.undo and undo_message and not defer_undo_message then
@@ -667,6 +671,9 @@ function BoardView:undo()
     Storage.save(self.state)
     self:layout()
     UIManager:setDirty(self, "flashui")
+    if self.card_view then
+        self.card_view:onBoardChanged()
+    end
     return true
 end
 
@@ -736,7 +743,7 @@ function BoardView:onTap(_, ges)
     end
     local card_id = hit(self.card_targets, ges.pos)
     if card_id then
-        CardDialog.showCardActions(self, card_id)
+        CardView.show(self, card_id)
         return true
     end
     local column_id = hit(self.header_targets, ges.pos)

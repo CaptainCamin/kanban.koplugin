@@ -1,7 +1,7 @@
 local Blitbuffer = require("ffi/blitbuffer")
 local BoardView = require("boardview")
 local Button = require("ui/widget/button")
-local CardDialog = require("carddialog")
+local CardView = require("cardview")
 local Device = require("device")
 local Font = require("ui/font")
 local FrameContainer = require("ui/widget/container/framecontainer")
@@ -158,7 +158,7 @@ function TodayView:openCard(board, column, card_id, card_index)
         UIManager:close(self.board_view)
     end
     UIManager:show(board_view, "full")
-    CardDialog.showCardActions(board_view, card_id)
+    CardView.show(board_view, card_id)
 end
 
 function TodayView:onClose()

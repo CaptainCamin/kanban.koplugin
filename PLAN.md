@@ -381,9 +381,23 @@ list exists in `cards`. Indexes are clamped to the valid range.
 - [x] Schema version 2: cards gain `checklist = { { text, done } }`, `moved`; columns
       gain `collapsed`. `Storage.migrate` upgrades version 1 files; specs cover the
       migration and a round trip.
-- [ ] E1: tapping a card opens a full-screen card view: title, all notes (scrollable),
+- [x] E1: tapping a card opens a full-screen card view: title, all notes (scrollable),
       the checklist (tap an item to tick it, add/edit/delete items), and the card
       actions from phase 9.
+- **Verified E1 (2026-10-27, KOReader v2026.07.1 AppImage, 600×800):** a long-notes
+  card scrolled through its notes and checklist; tapping toggled an item, and add,
+  edit and delete all saved. A card without notes or checklist showed both empty
+  states. Actions moved a card to another column and archived a card (closing the
+  detail view). Today opened the same card view. After restarting KOReader, the
+  checklist edits remained. `busted` passes (25 tests); LuaJIT syntax checks pass;
+  no ERROR/FATAL/CRASH/Traceback entries in `crash.log`. Inspected captures:
+  `.amp/in/artifacts/phase11-cardview-long-notes.png`,
+  `phase11-cardview-checklist.png`, `phase11-cardview-checklist-toggled.png`,
+  `phase11-cardview-checklist-added.png`, `phase11-cardview-checklist-edited.png`,
+  `phase11-cardview-checklist-deleted.png`,
+  `phase11-cardview-checklist-restarted.png`,
+  `phase11-cardview-no-notes.png`, `phase11-cardview-action-moved.png`,
+  `phase11-cardview-action-archived.png`, and `phase11-cardview-from-today.png`.
 - [ ] C4: small markers on board cards: ¶ when it has notes, ☑ done/total for the
       checklist, and days in the current column (needs a `moved` timestamp, set by
       `addCard`/`moveCard`).
@@ -691,3 +705,11 @@ These add to the per-phase orb notes above.
   A successful import is committed through the board view, which selects the new
   board and saves it with a full refresh; an invalid Markdown document is rejected
   without adding a board.
+- 2026-10-27: E1 uses a dedicated full-screen CardView over the board. The title,
+  scrollable notes and checklist share one scroll area; closing returns to the board
+  with the card's current column and page shown. The existing CardDialog actions are
+  reused: moving keeps the detail view open, while archiving closes it.
+- 2026-10-27: Checklist add, edit, toggle and delete call the schema-v2 Model
+  operations through `BoardView:commit()`, retaining the existing save and one-level
+  undo behavior. Board commits notify an open CardView to repaint. Today opens the
+  same detail view after selecting and revealing its card.

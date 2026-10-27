@@ -6,9 +6,10 @@ boards, columns, and cards. Cards are not linked to books.
 ## Features
 
 - Organize cards into ordered columns and move or reorder columns.
-- Add and edit cards with a title and optional notes. Card actions include moving
-  a card to another column, moving it up or down within its column, and archiving
-  it.
+- Add and edit cards with a title and optional notes. Tap a card for a full-screen
+  detail view with scrollable notes and a checklist; tap items to toggle them, or
+  add, edit and delete items. Its **Actions** button opens Edit, move/reorder and
+  Archive actions.
 - Hold a card and slide it: a bar shows where it will land, and sliding onto a
   column tab moves it to that column. Or hold, lift, then tap a gap between
   cards, a column header or a tab. Lift where you picked it up to cancel. Turn
