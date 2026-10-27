@@ -742,3 +742,10 @@ These add to the per-phase orb notes above.
   collapsed strip free enough room for another column on wide landscape screens.
   Strips are not header/card-gap targets; drops on a strip are append operations, as
   are drops on its tab, and neither changes the collapsed flag.
+- Combined check (2026-10-27, origin/main `993710b`): Phase 8 layout passed at 600×800
+  and the board at 1264×1680; Phase 9 add row, shortcuts, reorder and both Undo paths;
+  Phase 10 tap-to-drop, drag (including another column and tab) and its setting; Today,
+  board switcher, rotation and Add Kanban card gesture; emulator-build sleep image.
+  Sleep-screen option was turned off afterwards. No crash.log errors or commit-path
+  require crash. Fixed the one-card pager to show translated “Card 11 of 11”. `busted`:
+  25 successes. Inspected captures: `.amp/in/artifacts/combined-*.png`.

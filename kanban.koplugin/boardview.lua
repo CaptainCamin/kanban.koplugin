@@ -535,7 +535,9 @@ function BoardView:buildColumns(board, first, last, body_h)
             local pager = CenterContainer:new{
                 dimen = Geom:new{ w = col_w, h = pager_h },
                 #pages > 1 and TextWidget:new{
-                    text = T(_("Cards %1–%2 of %3"), start, stop, count),
+                    text = start == stop
+                        and T(_("Card %1 of %2"), start, count)
+                        or T(_("Cards %1–%2 of %3"), start, stop, count),
                     face = Font:getFace("xx_smallinfofont"),
                 } or VerticalSpan:new{ width = 0 },
             }
