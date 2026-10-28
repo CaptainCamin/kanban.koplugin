@@ -29,6 +29,7 @@ local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
 local logger = require("logger")
+local util = require("util")
 local T = require("ffi/util").template
 local _ = require("gettext")
 local Screen = Device.screen
@@ -37,6 +38,7 @@ local MAX_EXPANDED_COLUMNS = 3
 local TITLE_LINES = 3
 local MIN_TAB_WIDTH = 88
 local COLUMN_MARKER_GAP = Screen:scaleBySize(2)
+local COLUMN_TARGETS = { "column_rects", "card_targets", "add_card_targets", "header_targets", "collapsed_targets" }
 
 local function buildColumnPages(columns, available_width, min_column_width, collapsed_width, gap)
     local pages = {}
@@ -136,7 +138,10 @@ function BoardView:getBoard()
     return self.state.boards[1]
 end
 
-function BoardView:layout()
+function BoardView:layout(changed_columns)
+    if not changed_columns then
+        self.column_cache = {}
+    end
     self.dimen = Geom:new{ x = 0, y = 0, w = Screen:getWidth(), h = Screen:getHeight() }
     self.covers_fullscreen = true -- hint for UIManager:_repaint()
     if Device:isTouchDevice() then
@@ -158,7 +163,7 @@ function BoardView:layout()
     end
 
     local board = self:getBoard()
-    self.title_bar = TitleBar:new{
+    self.title_bar = changed_columns and self.title_bar or TitleBar:new{
         width = self.dimen.w,
         align = "center",
         -- The title is the board switcher: the ▼ marks it as tappable.
@@ -251,9 +256,16 @@ function BoardView:layout()
             },
         }
     else
-        body = self:buildColumns(board, first, last, columns_h)
+        body = self:buildColumns(board, first, last, columns_h, changed_columns)
+    end
+
+    -- Named whole regions, resolved from painted widgets rather than y offsets.
+    self.regions = { tabs = self.footer_region }
+    for id, cached in pairs(self.column_cache) do
+        self.regions[id] = cached.widget
     end
     if now_bar then
+        self.regions.now = now_bar
         body = VerticalGroup:new{
             align = "left",
             now_bar,
@@ -275,9 +287,11 @@ function BoardView:layout()
             footer,
         },
     }
+    self.rendered_moving_card = self.moving_card
+    self.rendered_selection = copy_map(self.selected_cards)
 end
 
-function BoardView:buildColumns(board, first, last, body_h)
+function BoardView:buildColumns(board, first, last, body_h, changed_columns)
     local outer = Size.padding.large
     local gap = Size.padding.fullscreen
     local collapsed_width = math.min(Screen:scaleBySize(48), self.dimen.w - 2 * outer)
@@ -324,7 +338,19 @@ function BoardView:buildColumns(board, first, last, body_h)
         local column = board.columns[index]
         local col_w = column.collapsed and collapsed_width or expanded_width
         local column_widget
-        if column.collapsed then
+        local cached = changed_columns and not changed_columns[column.id] and self.column_cache[column.id]
+        local target_starts = {}
+        for _, name in ipairs(COLUMN_TARGETS) do
+            target_starts[name] = #self[name]
+        end
+        if cached then
+            column_widget = cached.widget
+            for _, name in ipairs(COLUMN_TARGETS) do
+                for _, target in ipairs(cached[name]) do
+                    table.insert(self[name], target)
+                end
+            end
+        elseif column.collapsed then
             local strip_pad = Size.padding.small
             local inner_pad = card_border + strip_pad
             local inner_w = math.max(1, col_w - 2 * inner_pad)
@@ -502,12 +528,12 @@ function BoardView:buildColumns(board, first, last, body_h)
             end
             for position = start, stop do
                 local card = board.cards[column.cards[position]]
-                local picked = card.id == self.moving_card
+                local picked = card.id == self.moving_card or self.selected_cards and self.selected_cards[card.id]
                 local title_h = title_lines[card.id] * line_h
                 local title = TextBoxWidget:new{
                     text = card.title,
                     face = title_face,
-                    bold = picked,
+                    bold = card.id == self.moving_card,
                     width = text_w,
                     height = title_h,
                     height_overflow_show_ellipsis = true,
@@ -597,6 +623,22 @@ function BoardView:buildColumns(board, first, last, body_h)
             column_widget = group
         end
 
+        if not cached then
+            column_widget = FrameContainer:new{
+                width = col_w, height = body_h, padding = 0, bordersize = 0,
+                background = Blitbuffer.COLOR_WHITE,
+                column_widget,
+            }
+            cached = { widget = column_widget }
+            for _, name in ipairs(COLUMN_TARGETS) do
+                cached[name] = {}
+                for target_index = target_starts[name] + 1, #self[name] do
+                    table.insert(cached[name], self[name][target_index])
+                end
+            end
+            self.column_cache[column.id] = cached
+        end
+
         table.insert(row, column_widget)
         if index < last then
             table.insert(row, HorizontalSpan:new{ width = gap })
@@ -630,7 +672,28 @@ function BoardView:buildFooter(board, first, last)
         table.insert(row_items, button)
     end
 
-    if #columns == 0 then
+    if self.selected_cards then
+        local count = #self:selectedCardIds()
+        table.insert(row_items, TextWidget:new{
+            text = T(_("%1 selected"), count),
+            face = Font:getFace("x_smallinfofont"),
+        })
+        for _, action in ipairs({
+            { text = _("Move to…"), callback = function() self:showSelectionMove() end },
+            { text = _("Archive"), callback = function() self:changeSelection() end },
+            { text = _("Cancel"), enabled = true, callback = function() self:setSelectMode(false) end },
+        }) do
+            local button = Button:new{
+                text = action.text, callback = action.callback,
+                width = math.floor(row_width / 4),
+                height = row_height - 2 * (Size.padding.small + Size.border.button),
+                padding_h = Size.padding.small, padding_v = Size.padding.small,
+                text_font_size = 16, show_parent = self,
+            }
+            button:enableDisable(action.enabled or count > 0)
+            table.insert(row_items, button)
+        end
+    elseif #columns == 0 then
         table.insert(row_items, TextWidget:new{
             text = _("No columns"),
             face = Font:getFace("x_smallinfofont"),
@@ -715,15 +778,22 @@ function BoardView:buildFooter(board, first, last)
 
     local footer_info = HorizontalGroup:new(row_items)
     local footer_h = math.max(row_height, footer_info:getSize().h)
+    -- Keep the unchanged separator outside the dirty tab region. KOReader merges
+    -- even edge-touching refresh rectangles; this gap keeps columns and tabs apart.
+    self.footer_region = FrameContainer:new{
+        width = self.dimen.w, height = footer_h,
+        padding = 0, bordersize = 0, background = Blitbuffer.COLOR_WHITE,
+        CenterContainer:new{
+            dimen = Geom:new{ w = self.dimen.w, h = footer_h },
+            footer_info,
+        },
+    }
     return VerticalGroup:new{
         LineWidget:new{
             dimen = Geom:new{ w = self.dimen.w - 2 * Size.padding.large, h = Size.line.thin },
             background = Blitbuffer.COLOR_DARK_GRAY,
         },
-        CenterContainer:new{
-            dimen = Geom:new{ w = self.dimen.w, h = footer_h },
-            footer_info,
-        },
+        self.footer_region,
     }
 end
 
@@ -801,6 +871,126 @@ end
 function BoardView:resetPosition()
     self.first_column = 1
     self.card_start = {}
+    self.selected_cards = nil
+end
+
+function BoardView:dirtyRegions(columns)
+    local names = copy_map(columns)
+    names.tabs = true
+    for name in pairs(names) do
+        local region_name = name
+        local widget = self.regions[name]
+        if widget then
+            UIManager:setDirty(self, function()
+                logger.dbg("kanban: region refresh ui", region_name, widget.dimen)
+                return "ui", widget.dimen
+            end)
+        end
+    end
+end
+
+-- Only card/list changes are safe for regional layout. Unknown board metadata,
+-- column structure/collapse, page changes and pickup decorations use the fallback.
+function BoardView:repaintBoard(previous, position, refresh_type)
+    local board = self:getBoard()
+    local old_meta, new_meta = copy_map(previous), copy_map(board)
+    for _, key in ipairs({ "cards", "columns", "archived", "next_id" }) do
+        old_meta[key], new_meta[key] = nil, nil
+    end
+    local changed = {}
+    local partial = not refresh_type and not self.rendered_moving_card
+        and util.tableEquals(old_meta, new_meta) and #previous.columns == #board.columns
+    -- The Now bar sits above the columns and can change height with its title.
+    if board.now_card and not util.tableEquals(previous.cards[board.now_card], board.cards[board.now_card]) then
+        partial = false
+    end
+    for _, page in ipairs(self.column_pages) do
+        if self.first_column >= page.first and self.first_column <= page.last
+            and page.first ~= position.first_column then
+            partial = false
+        end
+    end
+    if partial then
+        for index, column in ipairs(board.columns) do
+            local old = previous.columns[index]
+            local old_column, new_column = copy_map(old), copy_map(column)
+            old_column.cards, new_column.cards = nil, nil
+            if not util.tableEquals(old_column, new_column) then
+                partial = false
+                break
+            end
+            if not util.tableEquals(old.cards, column.cards)
+                or (position.card_start[column.id] or 1) ~= (self.card_start[column.id] or 1) then
+                changed[column.id] = true
+            end
+            for _, id in ipairs(column.cards) do
+                if not util.tableEquals(previous.cards[id], board.cards[id])
+                    or self.rendered_selection[id] ~= (self.selected_cards or {})[id] then
+                    changed[column.id] = true
+                end
+            end
+        end
+    end
+    self:layout(partial and changed or nil)
+    local page_changed = position.first_column ~= self.first_column
+    for _, column in ipairs(self.column_rects or {}) do
+        if (position.card_start[column.id] or 1) ~= self.card_start[column.id] then
+            page_changed = true
+        end
+    end
+    if partial and not page_changed then
+        self:dirtyRegions(changed)
+    else
+        UIManager:setDirty(self, refresh_type or (page_changed and "flashui" or "ui"))
+    end
+end
+
+function BoardView:selectedCardIds()
+    local ids = {}
+    for _, column in ipairs(self:getBoard().columns) do
+        for _, id in ipairs(column.cards) do
+            if self.selected_cards and self.selected_cards[id] then
+                table.insert(ids, id)
+            end
+        end
+    end
+    return ids
+end
+
+function BoardView:setSelectMode(enabled)
+    self.selected_cards = enabled and {} or nil
+    self:layout()
+    local columns = {}
+    for id in pairs(self.column_cache) do columns[id] = true end
+    self:dirtyRegions(columns)
+end
+
+function BoardView:changeSelection(column_id)
+    local ids = self:selectedCardIds()
+    if #ids == 0 then return end
+    self:commit(function()
+        return Model.changeCards(self:getBoard(), ids, column_id)
+    end, function()
+        self.selected_cards = nil
+    end, nil, column_id and _("Cards moved") or _("Cards archived"))
+end
+
+function BoardView:showSelectionMove()
+    local dialog
+    local buttons = {}
+    for _, column in ipairs(self:getBoard().columns) do
+        local id = column.id
+        table.insert(buttons, { {
+            text = column.name,
+            callback = function()
+                UIManager:close(dialog)
+                self:changeSelection(id)
+            end,
+        } })
+    end
+    table.insert(buttons, { { text = _("Cancel"), callback = function() UIManager:close(dialog) end } })
+    dialog = ButtonDialog:new{ title = _("Move to…"), buttons = buttons }
+    UIManager:show(dialog)
 end
 
 -- Runs `change`, a function that calls one Model operation and returns its
@@ -835,8 +1025,7 @@ function BoardView:commit(change, after, refresh_type, undo_message, defer_undo_
     if after then
         after()
     end
-    self:layout()
-    UIManager:setDirty(self, refresh_type or "ui")
+    self:repaintBoard(previous_board, previous_position, refresh_type)
     if self.card_view then
         self.card_view:onBoardChanged()
     end
@@ -853,6 +1042,8 @@ function BoardView:undo()
     if not undo then
         return false
     end
+    local previous_board = Model.copyBoard(self:getBoard())
+    local position = { first_column = self.first_column, card_start = copy_map(self.card_start) }
     local ok, err = Model.restoreBoard(self.state, undo.board)
     if not ok then
         logger.warn("kanban: undo failed:", err)
@@ -862,9 +1053,9 @@ function BoardView:undo()
     self.state.undo = nil
     self.first_column = undo.first_column or 1
     self.card_start = copy_map(undo.card_start)
+    self.selected_cards = nil
     Storage.save(self.state)
-    self:layout()
-    UIManager:setDirty(self, "flashui")
+    self:repaintBoard(previous_board, position)
     if self.card_view then
         self.card_view:onBoardChanged()
     end
@@ -926,6 +1117,17 @@ function BoardView:setMovingCard(card_id)
 end
 
 function BoardView:onTap(_, ges)
+    if self.selected_cards then
+        local card_id = hit(self.card_targets, ges.pos)
+        if card_id then
+            self.selected_cards[card_id] = not self.selected_cards[card_id] or nil
+            local column = self:locateCard(card_id)
+            local changed = { [column.id] = true }
+            self:layout(changed)
+            self:dirtyRegions(changed)
+        end
+        return true
+    end
     if self.moving_card then
         local collapsed_column_id = hit(self.collapsed_targets, ges.pos)
         if collapsed_column_id then
@@ -974,14 +1176,17 @@ function BoardView:onTap(_, ges)
 end
 
 function BoardView:onHold(_, ges)
+    if self.selected_cards then return true end
     return CardMove.hold(self, ges.pos)
 end
 
 function BoardView:onHoldPan(_, ges)
+    if self.selected_cards then return true end
     return CardMove.pan(self, ges.pos)
 end
 
 function BoardView:onHoldRelease(_, ges)
+    if self.selected_cards then return true end
     if self.moving_card and self.dragging then
         local collapsed_column_id = hit(self.collapsed_targets, ges.pos)
         if collapsed_column_id then
@@ -1014,6 +1219,9 @@ function BoardView:onSwipe(_, ges)
 end
 
 function BoardView:onShowMenu()
+    if self.selected_cards then
+        self:setSelectMode(false)
+    end
     if self.moving_card then
         self:setMovingCard(nil)
     end

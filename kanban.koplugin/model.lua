@@ -452,6 +452,29 @@ function Model.archiveCard(board, card_id)
     return true
 end
 
+-- Validate the complete batch before changing anything. IDs are ordered by the
+-- caller (the UI uses board order), so appending a selection is deterministic.
+function Model.changeCards(board, card_ids, to_column_id, clock)
+    if to_column_id and not find_column(board, to_column_id) then
+        return nil, "column not found"
+    end
+    local seen = {}
+    for _, id in ipairs(card_ids) do
+        if not board.cards[id] or board.cards[id].archived or seen[id] then
+            return nil, "selection contains an invalid card"
+        end
+        seen[id] = true
+    end
+    for _, id in ipairs(card_ids) do
+        if to_column_id then
+            Model.moveCard(board, id, to_column_id, nil, clock)
+        else
+            Model.archiveCard(board, id)
+        end
+    end
+    return true
+end
+
 function Model.restoreCard(board, card_id, column_id)
     local card = board.cards[card_id]
     local column = find_column(board, column_id)

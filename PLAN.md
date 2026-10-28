@@ -426,13 +426,28 @@ list exists in `cards`. Indexes are clamped to the valid range.
   show the card view, markers and a collapsed column.
 
 ### Phase 12: Bulk actions and faster repaints
-- [ ] A8: Select mode (board menu): tapping cards toggles them; a bar offers Move to…,
+- [x] A8: Select mode (board menu): tapping cards toggles them; a bar offers Move to…,
       Archive and Cancel for the selection.
-- [ ] D4: repaint only the widgets a change touched (the affected columns, the tabs)
+- [x] D4: repaint only the widgets a change touched (the affected columns, the tabs)
       with `setDirty` on their regions, instead of rebuilding and refreshing the whole
       board. Page changes still use `"flashui"`.
 - **Done when:** select-and-move/archive works, and moving a card within one column
   refreshes only that column (checked by logging the refreshed regions).
+- **Verified (2026-10-27, KOReader v2026.07.1 Emulator, 600×800):** selected cards
+  across column/card pages, toggled selection, moved and archived batches, and used
+  one Undo after each; Cancel and hold/drag suppression worked. Debug logs show a
+  within-column move requesting only c1 (10,51,282,708) and tabs (0,760,600,40),
+  and a between-column move adding only c2 (307,51,282,708). An unchanged column's
+  widget identity was retained. Page swipes still requested full-board `flashui`
+  (0,0,600,800). Edits, drag/drop (including `a2` preview), undo and collapse/expand
+  left a capture pixel-identical to a fresh restart of the same saved state
+  (`magick compare -metric AE`: 0). Card detail checklist commits, Today → card
+  detail, and the off-screen sleep renderer worked; the sleep option was disabled
+  afterwards. `busted`: 27 successes; LuaJIT syntax checks pass; final crash.log has
+  no ERROR/FATAL/CRASH/Traceback entries. The initial selection-bar gettext shadowing
+  bug was fixed before the successful pass. X11 recording was black (one attempt),
+  so inspected screenshots are the visual evidence. Captures and refresh log:
+  `.amp/in/artifacts/phase12-*.png`, `phase12-refresh-regions.log`.
 
 ### Phase 13: Now card and sleep screen
 - [x] D2: pin one card as "Now" (card actions). It shows above the columns in bold;
@@ -768,3 +783,23 @@ These add to the per-phase orb notes above.
   before the columns, so card-page packing uses the remaining height; the card stays
   in its column. The sleep-screen render shows the full board with its Now bar rather
   than rendering only the pinned card, reusing BoardView's existing off-screen renderer.
+- 2026-10-27: A8 keeps selection in the board view, not saved card data. Selected
+  cards use a heavy black border and gray fill without changing title metrics or
+  page packing. The counted action bar replaces tabs; swipes/page keys still page,
+  while card holds/drags and non-card body taps do nothing. Bulk operations pass
+  board-ordered IDs to pure `Model.changeCards(board, ids, destination?, clock?)`;
+  it validates the entire batch before mutating and delegates to move/archive.
+  Each batch uses one commit/save/snapshot, so one Undo restores every card.
+- 2026-10-27: D4 diffs the previous board snapshot for changed column lists and
+  card contents, reuses untouched column widgets/targets, and rebuilds affected
+  columns and tabs. Unknown board metadata, column structure/collapse, and pickup
+  decorations retain a full-layout fallback; page changes use full-board `flashui`.
+  Undo uses the same diff path. Repaint regions are named painted widgets (`tabs`
+  and column IDs), not y offsets, so an additional region above columns can be
+  registered alongside them without changing refresh geometry. Checked KOReader's
+  `UIManager:setDirty` and vocabbuilder's callback pattern: dirty the shown board,
+  resolve child regions after painting. The tab region excludes the unchanged
+  separator because UIManager merges even edge-touching rectangles; including the
+  separator would merge columns and tabs into a near-full-board refresh. Drag's
+  existing old/new `a2` preview rectangles remain unchanged; release's full fallback
+  clears pickup headers and source highlighting.

@@ -18,6 +18,9 @@ boards, columns, and cards. Cards are not linked to books.
   an **Undo** button for a few seconds, and the board menu (☰) always has
   **Undo: <change>**, even after a restart. The card dialog also has
   previous/next column buttons and Move to top/bottom.
+- Choose **Select cards** in the board menu (☰), tap cards across pages, then
+  **Move to…** or **Archive** the selection. One **Undo** restores the whole batch;
+  **Cancel** leaves cards unchanged. Hold and drag are disabled while selecting.
 - Cards show small markers: ¶ when they have notes, ☑ done/total for a
   checklist, and how many days they've been in their column.
 - Pin one card as **Now** per board; it appears in a bold bar above the columns

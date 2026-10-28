@@ -746,6 +746,12 @@ function CardDialog.showBoardMenu(view)
                 end),
             } },
             { {
+                text = _("Select cards"),
+                callback = action(function()
+                    view:setSelectMode(true)
+                end),
+            } },
+            { {
                 text = _("Add column"),
                 callback = action(function()
                     promptName{
