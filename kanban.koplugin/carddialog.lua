@@ -496,6 +496,9 @@ function CardDialog.showColumnActions(view, column_id)
             { {
                 text = _("Use as in-progress column for Today"),
                 checked_func = function() return today_column == column end,
+                -- The callback closes this dialog; without this, Button repaints itself
+                -- (to update the checkmark) on top of the board after it has been redrawn.
+                no_refresh_checkmark = true,
                 callback = action(function()
                     view:commit(function() return Model.setTodayColumn(board, column_id) end)
                 end),
@@ -640,6 +643,9 @@ function CardDialog.showBoards(view)
             align = "left",
             font_bold = false,
             checked_func = function() return board == current end,
+            -- The callback closes this dialog; without this, Button repaints itself
+            -- (to update the checkmark) on top of the board after it has been redrawn.
+            no_refresh_checkmark = true,
             callback = action(function()
                 if board ~= current then
                     view:commit(function() return Model.selectBoard(state, board.id) end, function()

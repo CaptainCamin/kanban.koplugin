@@ -803,3 +803,10 @@ These add to the per-phase orb notes above.
   separator would merge columns and tabs into a near-full-board refresh. Drag's
   existing old/new `a2` preview rectangles remain unchanged; release's full fallback
   clears pickup headers and source highlighting.
+- 2026-10-28: The board-switch "ghost" from the owner's device was not e-ink ghosting.
+  KOReader's `Button` repaints itself after its callback when it has `checked_func`
+  (to update the ✓), so a board button whose callback closed the Boards dialog and
+  redrew the board was painted back on top of the new board (the emulator shows it
+  too). The `"full"` refresh from `394adf0` couldn't help, because the stray paint
+  comes after it. Buttons with `checked_func` whose callback closes their dialog set
+  `no_refresh_checkmark = true` (board list, and "Use as in-progress column for Today").
