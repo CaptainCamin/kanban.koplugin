@@ -81,17 +81,9 @@ local function showMarkdownError(message)
     UIManager:show(InfoMessage:new{ text = message })
 end
 
-local function exportBoard(board)
-    local home_dir = getHomeDirectory()
-    if not home_dir then
-        local err = "home directory is not available"
-        logger.warn("kanban: Markdown export failed:", err)
-        showMarkdownError(T(_("Could not export Markdown:\n%1"), err))
-        return
-    end
-
+local function writeExport(board, dir)
     local filename = "kanban-" .. safeBoardFilename(board.name) .. ".md"
-    local path = ffiUtil.joinPath(home_dir, filename)
+    local path = ffiUtil.joinPath(dir, filename)
     local file, err = io.open(path, "wb")
     if not file then
         logger.warn("kanban: Markdown export failed:", path, err)
@@ -115,6 +107,25 @@ local function exportBoard(board)
     end
     UIManager:show(InfoMessage:new{
         text = T(_("Markdown exported to:\n%1"), path),
+    })
+end
+
+-- Ask for a folder, starting where the last export went, then write the board there.
+local function exportBoard(board)
+    local start_dir = G_reader_settings:readSetting("kanban_export_dir")
+    if not start_dir or lfs.attributes(start_dir, "mode") ~= "directory" then
+        start_dir = getHomeDirectory()
+    end
+    UIManager:show(PathChooser:new{
+        path = start_dir,
+        title = true, -- "Long-press folder's name to choose it"
+        select_directory = true,
+        select_file = false,
+        show_files = false,
+        onConfirm = function(dir)
+            G_reader_settings:saveSetting("kanban_export_dir", dir)
+            writeExport(board, dir)
+        end,
     })
 end
 
@@ -785,7 +796,7 @@ function CardDialog.showBoardMenu(view)
                 end),
             } },
             { {
-                text = _("Export to Markdown"),
+                text = _("Export to Markdown…"),
                 callback = action(function()
                     exportBoard(board)
                 end),

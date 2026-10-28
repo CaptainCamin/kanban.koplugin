@@ -810,3 +810,7 @@ These add to the per-phase orb notes above.
   too). The `"full"` refresh from `394adf0` couldn't help, because the stray paint
   comes after it. Buttons with `checked_func` whose callback closes their dialog set
   `no_refresh_checkmark = true` (board list, and "Use as in-progress column for Today").
+- 2026-10-28: Export to Markdown… asks for a folder with KOReader's `PathChooser`
+  (folders only), starting at the last export folder (`kanban_export_dir` in
+  `G_reader_settings`, so it doesn't share an open `LuaSettings` copy of
+  `kanban-options.lua` with cardmove.lua), or the home folder the first time.
