@@ -354,14 +354,31 @@ function BoardView:buildColumns(board, first, last, body_h, changed_columns)
             local strip_pad = Size.padding.small
             local inner_pad = card_border + strip_pad
             local inner_w = math.max(1, col_w - 2 * inner_pad)
-            local name_probe = TextWidget:new{
-                text = column.name,
-                face = Font:getFace("x_smallinfofont"),
-                max_width = inner_w,
+            local inner_h = math.max(1, body_h - 2 * inner_pad)
+            -- The name reads top to bottom, one letter per line, as far as the
+            -- strip's height allows (leaving room for the count below it).
+            local letter_face = Font:getFace("x_smallinfofont")
+            local count_widget = TextWidget:new{
+                text = tostring(#column.cards),
+                face = Font:getFace("xx_smallinfofont"),
+                fgcolor = Blitbuffer.COLOR_DARK_GRAY,
             }
-            local name, truncated = name_probe:getFittedText()
-            if truncated then
-                name = name .. "…"
+            local letter_h = TextWidget:new{ text = "M", face = letter_face }:getSize().h
+            local max_letters = math.max(1, math.floor(
+                (inner_h - count_widget:getSize().h - card_gap) / letter_h))
+            local chars = util.splitToChars(util.trim(column.name))
+            if #chars > max_letters then
+                chars = { unpack(chars, 1, math.max(1, max_letters - 1)) }
+                table.insert(chars, "…")
+            end
+            local letters = VerticalGroup:new{ align = "center" }
+            for _, char in ipairs(chars) do
+                table.insert(letters, TextWidget:new{
+                    text = char:match("%s") and " " or char,
+                    face = letter_face,
+                    fgcolor = Blitbuffer.COLOR_BLACK,
+                    max_width = inner_w,
+                })
             end
             column_widget = FrameContainer:new{
                 width = col_w,
@@ -372,21 +389,12 @@ function BoardView:buildColumns(board, first, last, body_h, changed_columns)
                 padding = strip_pad,
                 background = Blitbuffer.COLOR_LIGHT_GRAY,
                 CenterContainer:new{
-                    dimen = Geom:new{ w = inner_w, h = math.max(1, body_h - 2 * inner_pad) },
+                    dimen = Geom:new{ w = inner_w, h = inner_h },
                     VerticalGroup:new{
                         align = "center",
-                        TextWidget:new{
-                            text = name,
-                            face = Font:getFace("x_smallinfofont"),
-                            fgcolor = Blitbuffer.COLOR_BLACK,
-                            max_width = inner_w,
-                        },
+                        letters,
                         VerticalSpan:new{ width = card_gap },
-                        TextWidget:new{
-                            text = tostring(#column.cards),
-                            face = Font:getFace("xx_smallinfofont"),
-                            fgcolor = Blitbuffer.COLOR_DARK_GRAY,
-                        },
+                        count_widget,
                     },
                 },
             }

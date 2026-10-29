@@ -164,7 +164,7 @@ function CardView:layout()
             local row = HorizontalGroup:new{
                 align = "top",
                 Button:new{
-                    text = (item.done and "[x] " or "[ ] ") .. item.text,
+                    text = (item.done and "☑ " or "☐ ") .. item.text,
                     width = toggle_width,
                     height = Screen:scaleBySize(44),
                     align = "left",
