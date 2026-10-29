@@ -13,6 +13,7 @@ local Geom = require("ui/geometry")
 local GestureRange = require("ui/gesturerange")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
+local ImageWidget = require("ui/widget/imagewidget")
 local InfoMessage = require("ui/widget/infomessage")
 local InputContainer = require("ui/widget/container/inputcontainer")
 local LeftContainer = require("ui/widget/container/leftcontainer")
@@ -355,31 +356,29 @@ function BoardView:buildColumns(board, first, last, body_h, changed_columns)
             local inner_pad = card_border + strip_pad
             local inner_w = math.max(1, col_w - 2 * inner_pad)
             local inner_h = math.max(1, body_h - 2 * inner_pad)
-            -- The name reads top to bottom, one letter per line, as far as the
-            -- strip's height allows (leaving room for the count below it).
-            local letter_face = Font:getFace("x_smallinfofont")
+            -- The name runs along the strip, rotated a quarter turn, cut with
+            -- "…" where the strip's height runs out (leaving room for the count).
             local count_widget = TextWidget:new{
                 text = tostring(#column.cards),
                 face = Font:getFace("xx_smallinfofont"),
                 fgcolor = Blitbuffer.COLOR_DARK_GRAY,
             }
-            local letter_h = TextWidget:new{ text = "M", face = letter_face }:getSize().h
-            local max_letters = math.max(1, math.floor(
-                (inner_h - count_widget:getSize().h - card_gap) / letter_h))
-            local chars = util.splitToChars(util.trim(column.name))
-            if #chars > max_letters then
-                chars = { unpack(chars, 1, math.max(1, max_letters - 1)) }
-                table.insert(chars, "…")
-            end
-            local letters = VerticalGroup:new{ align = "center" }
-            for _, char in ipairs(chars) do
-                table.insert(letters, TextWidget:new{
-                    text = char:match("%s") and " " or char,
-                    face = letter_face,
-                    fgcolor = Blitbuffer.COLOR_BLACK,
-                    max_width = inner_w,
-                })
-            end
+            local name_widget = TextWidget:new{
+                text = util.trim(column.name),
+                face = Font:getFace("x_smallinfofont"),
+                fgcolor = Blitbuffer.COLOR_BLACK,
+                max_width = math.max(1, inner_h - count_widget:getSize().h - card_gap),
+            }
+            local name_size = name_widget:getSize()
+            local name_bb = Blitbuffer.new(name_size.w, name_size.h, Blitbuffer.TYPE_BB8)
+            name_bb:fill(Blitbuffer.COLOR_LIGHT_GRAY)
+            name_widget:paintTo(name_bb, 0, 0)
+            name_widget:free()
+            local name_image = ImageWidget:new{
+                image = name_bb,
+                image_disposable = true,
+                rotation_angle = 270,
+            }
             column_widget = FrameContainer:new{
                 width = col_w,
                 height = body_h,
@@ -392,7 +391,7 @@ function BoardView:buildColumns(board, first, last, body_h, changed_columns)
                     dimen = Geom:new{ w = inner_w, h = inner_h },
                     VerticalGroup:new{
                         align = "center",
-                        letters,
+                        name_image,
                         VerticalSpan:new{ width = card_gap },
                         count_widget,
                     },

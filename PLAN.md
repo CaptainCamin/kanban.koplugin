@@ -814,6 +814,8 @@ These add to the per-phase orb notes above.
   (folders only), starting at the last export folder (`kanban_export_dir` in
   `G_reader_settings`, so it doesn't share an open `LuaSettings` copy of
   `kanban-options.lua` with cardmove.lua), or the home folder the first time.
-- 2026-10-29: Collapsed column strips show the name one letter per line (spaces as
-  blank lines), as many letters as fit above the count, ending in "…" when cut. The
+- 2026-10-29: Collapsed column strips show the name rotated a quarter turn, reading
+  top to bottom along the strip above the count, ending in "…" when cut. It is a
+  `TextWidget` painted into a light-gray buffer and shown by an `ImageWidget` with
+  `rotation_angle = 270`; this replaced an earlier one-letter-per-line layout. The
   card view's checklist uses ☐/☑ instead of `[ ]`/`[x]`.
