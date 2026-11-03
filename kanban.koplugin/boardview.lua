@@ -827,6 +827,7 @@ function BoardView:onPrevColumns()
     return true
 end
 
+-- Returns true when the column's card page actually changed.
 function BoardView:pageCards(pos, step)
     for _, column in ipairs(self.column_rects or {}) do
         if column.rect:contains(pos) then
@@ -834,10 +835,12 @@ function BoardView:pageCards(pos, step)
             if page then
                 self.card_start[column.id] = page.start
                 self:refresh()
+                return true
             end
-            return
+            return false
         end
     end
+    return false
 end
 
 function BoardView:findColumn(column_id)

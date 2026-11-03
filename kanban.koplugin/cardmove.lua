@@ -100,6 +100,92 @@ function CardMove.target(view, pos, dragging)
     end
 end
 
+-- A column's cards can run over several pages, and only the painted page has
+-- gaps. Resting the picked card against the top or bottom edge of a column's
+-- cards turns that column's card page after a moment, so every page stays
+-- reachable while dragging.
+local PAGE_DELAY = 0.8
+
+local function cardAreaTop(view, column_id)
+    for _, header in ipairs(view.header_targets or {}) do
+        local rect = header.frame.dimen
+        if header.id == column_id and rect and rect.x then
+            return rect.y + rect.h
+        end
+    end
+end
+
+-- -1 or 1 when `pos` rests in an edge zone that has a further card page, else nil.
+local function pageStep(view, pos)
+    local edge = Device.screen:scaleBySize(48)
+    for _, column in ipairs(view.column_rects or {}) do
+        local rect = column.rect
+        if rect:contains(pos) then
+            local top = cardAreaTop(view, column.id)
+            local bottom = rect.y + rect.h
+            if top and pos.y >= top and pos.y < top + edge then
+                if column.pages[column.page_index - 1] then
+                    return -1
+                end
+            elseif pos.y <= bottom and pos.y > bottom - edge then
+                if column.pages[column.page_index + 1] then
+                    return 1
+                end
+            end
+            return nil
+        end
+    end
+end
+
+local function stopPaging(view)
+    if view.drag_page_timer then
+        UIManager:unschedule(view.drag_page_timer)
+        view.drag_page_timer = nil
+    end
+end
+
+local function pageLater(view, step)
+    stopPaging(view)
+    if not step then
+        return
+    end
+    local timer
+    timer = function()
+        if view.drag_page_timer ~= timer then
+            return
+        end
+        view.drag_page_timer = nil
+        local pos = view.drag_pos
+        if not view.moving_card or not view.dragging or not pos
+            or pageStep(view, pos) ~= step then
+            return
+        end
+        view.drop_preview = nil
+        if not view:pageCards(pos, step) then
+            return
+        end
+        -- Another card now sits where the pick started, so the "still over the
+        -- picked card" cancellation no longer applies to this drag.
+        view.drag_origin = nil
+        -- Gaps come from painted frames, so paint the new page before aiming.
+        UIManager:forceRePaint()
+        view.drop_preview = CardMove.target(view, pos, true)
+        if view.drop_preview and view.drop_preview.rect then
+            UIManager:setDirty(view, "a2", view.drop_preview.rect)
+        end
+        pageLater(view, pageStep(view, pos))
+    end
+    view.drag_page_timer = timer
+    UIManager:scheduleIn(PAGE_DELAY, timer)
+end
+
+local function targetAt(view, pos)
+    if view.drag_origin and view.drag_origin:contains(pos) then
+        return nil
+    end
+    return CardMove.target(view, pos, true)
+end
+
 function CardMove.drop(view, target)
     local card_id = view.moving_card
     local source, old_index = view:locateCard(card_id)
@@ -115,6 +201,8 @@ function CardMove.drop(view, target)
         index = index - 1
     end
     view.moving_card, view.drag_origin, view.dragging, view.drop_preview = nil, nil, nil, nil
+    view.drag_pos, view.drag_page_step = nil, nil
+    stopPaging(view)
     if destination and not (source == destination and old_index == index) then
         view:commit(function()
             return Model.moveCard(view:getBoard(), card_id, destination.id, index)
@@ -133,6 +221,8 @@ function CardMove.hold(view, pos)
     end
     view.drag_origin = rect:copy()
     view.dragging, view.drop_preview = nil, nil
+    view.drag_page_step = nil
+    stopPaging(view)
     view:setMovingCard(card.id)
     return true
 end
@@ -146,7 +236,13 @@ function CardMove.pan(view, pos)
     end
     -- The detector emits hold_pan only at/above its DPI-scaled PAN_THRESHOLD.
     view.dragging = true
-    local target = not view.drag_origin:contains(pos) and CardMove.target(view, pos, true) or nil
+    view.drag_pos = pos
+    local step = pageStep(view, pos)
+    if step ~= view.drag_page_step then
+        view.drag_page_step = step
+        pageLater(view, step)
+    end
+    local target = targetAt(view, pos)
     local old = view.drop_preview
     if old and target and old.id == target.id and old.index == target.index and old.tab == target.tab then
         return true
@@ -171,7 +267,7 @@ function CardMove.release(view, pos)
     if not view.dragging then
         return true -- hold-and-lift stays picked up for tap-to-drop
     end
-    local target = not view.drag_origin:contains(pos) and CardMove.target(view, pos, true) or nil
+    local target = targetAt(view, pos)
     return CardMove.drop(view, target)
 end
 
