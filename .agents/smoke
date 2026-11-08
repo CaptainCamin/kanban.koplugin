@@ -1,0 +1,979 @@
+#!/usr/bin/env python3
+"""Repeatable KOReader smoke pass for the Kanban plugin.
+
+This runs on a plain Linux VM (no Amp orb): it uses .agents/setup for KOReader,
+starts a private Xvfb display, launches the desktop or emulator build with an
+isolated KO_HOME, drives the UI through httpinspector + X11 input, and fails on
+KOReader errors, missing UI states, or crash.log entries.
+
+Examples:
+  .agents/smoke                         # emulator build, all checks; artifacts in .agents/artifacts/smoke
+  .agents/smoke --build desktop --skip-sleep --skip-markdown --artifacts /tmp/kanban-smoke
+  .agents/smoke --only board-tools,gestures --keep
+
+Checks: Tools-menu and gesture open, Today, card view/checklist, drag move + edge
+paging, bulk select/archive/undo, Markdown export/import, and (emulator only) F2
+sleep-screen resume. It fails on KOReader tracebacks/crash.log entries or missing UI states.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parent.parent
+PLUGIN = REPO / "kanban.koplugin"
+SETUP = REPO / ".agents" / "setup"
+CACHE = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "koreader"
+APP_ROOT = CACHE / "current"
+APP_RUN = APP_ROOT / "AppRun"
+LIB = APP_ROOT / "usr" / "lib" / "koreader"
+LUA = LIB / "luajit"
+READER = LIB / "reader.lua"
+
+
+class SmokeError(Exception):
+    pass
+
+
+def log(msg: str) -> None:
+    print(f"[smoke] {msg}", flush=True)
+
+
+def run(cmd, *, env=None, cwd=None, input=None, check=True, timeout=120):
+    p = subprocess.run(
+        [str(c) for c in cmd],
+        env=env,
+        cwd=str(cwd) if cwd else None,
+        input=input,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        timeout=timeout,
+    )
+    if check and p.returncode != 0:
+        raise SmokeError(f"command failed ({p.returncode}): {' '.join(map(str, cmd))}\n{p.stdout[-4000:]}")
+    return p
+
+
+def have(cmd: str) -> bool:
+    return shutil.which(cmd) is not None
+
+
+def ensure_dependencies() -> None:
+    missing = [c for c in ("luajit", "lua", "busted", "curl", "jq", "xdotool", "import", "xdpyinfo", "Xvfb") if not have(c)]
+    if missing or not APP_RUN.exists() or not READER.exists():
+        log(f"ensuring dependencies via .agents/setup (missing: {', '.join(missing) or 'KOReader'})")
+        run([SETUP], timeout=900)
+    still = [c for c in ("luajit", "busted", "curl", "jq", "xdotool", "import", "xdpyinfo", "Xvfb") if not have(c)]
+    if still:
+        raise SmokeError(f"missing required commands after setup: {', '.join(still)}")
+    if not APP_RUN.exists() or not READER.exists():
+        raise SmokeError(f"KOReader not found at {APP_ROOT}; run .agents/setup")
+
+
+def free_display(preferred: str | None) -> str:
+    candidates = [preferred] if preferred else [f":{n}" for n in range(99, 110)]
+    for disp in candidates:
+        p = subprocess.run(["xdpyinfo", "-display", disp], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if p.returncode != 0:
+            return disp
+    raise SmokeError("no free X display")
+
+
+class Display:
+    def __init__(self, name: str, artifacts: Path, width: int, height: int):
+        self.name = name
+        self.width = width
+        self.height = height
+        self.proc = None
+        self.log = artifacts / "xvfb.log"
+
+    def start(self) -> None:
+        p = subprocess.run(["xdpyinfo", "-display", self.name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if p.returncode == 0:
+            log(f"using existing X display {self.name}")
+            return
+        log(f"starting Xvfb {self.name} ({self.width}x{self.height})")
+        with open(self.log, "ab") as fh:
+            self.proc = subprocess.Popen(
+                ["Xvfb", self.name, "-screen", "0", f"{self.width}x{self.height}x24"],
+                stdout=fh,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
+        deadline = time.time() + 15
+        while time.time() < deadline:
+            if subprocess.run(["xdpyinfo", "-display", self.name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
+                return
+            if self.proc.poll() is not None:
+                raise SmokeError(f"Xvfb exited early; see {self.log}")
+            time.sleep(0.2)
+        raise SmokeError(f"Xvfb {self.name} did not become ready; see {self.log}")
+
+    def stop(self) -> None:
+        if self.proc and self.proc.poll() is None:
+            self.proc.terminate()
+            try:
+                self.proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.proc.kill()
+
+
+class Koreader:
+    def __init__(self, args, home: Path, artifacts: Path, display: Display):
+        self.args = args
+        self.home = home
+        self.artifacts = artifacts
+        self.display = display
+        self.port = args.port
+        self.proc = None
+        self.log_path = artifacts / "koreader.stdout.log"
+        self.win = None
+        self.offset = (0, 0)
+
+    def env(self) -> dict:
+        env = os.environ.copy()
+        env.update({
+            "DISPLAY": self.display.name,
+            "SDL_VIDEODRIVER": "x11",
+            "EMULATE_READER_W": str(self.args.size_w),
+            "EMULATE_READER_H": str(self.args.size_h),
+            "KO_HOME": str(self.home),
+        })
+        for key in ("KO_MULTIUSER", "APPIMAGE", "FLATPAK", "UBUNTU_APPLICATION_ISOLATION"):
+            env.pop(key, None)
+        if self.args.build == "desktop":
+            env["KO_MULTIUSER"] = "1"
+        return env
+
+    def start(self) -> None:
+        log(f"starting KOReader ({self.args.build}) on {self.display.name}, port {self.port}")
+        env = self.env()
+        if self.args.build == "desktop":
+            cmd = [APP_RUN]
+            cwd = None
+        else:
+            cmd = [LUA, "reader.lua"]
+            cwd = LIB
+        with open(self.log_path, "ab") as out:
+            self.proc = subprocess.Popen(
+                cmd,
+                env=env,
+                cwd=str(cwd) if cwd else None,
+                stdout=out,
+                stderr=subprocess.STDOUT,
+                stdin=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        self.wait_ready()
+
+    def stop(self) -> None:
+        if not self.proc:
+            return
+        if self.proc.poll() is None:
+            try:
+                os.killpg(self.proc.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            try:
+                self.proc.wait(timeout=8)
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(self.proc.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                self.proc.wait(timeout=5)
+        self.collect_crash_logs()
+
+    def collect_crash_logs(self) -> None:
+        for src in [self.home / "crash.log", LIB / "crash.log", APP_ROOT / "crash.log"]:
+            if src.exists():
+                shutil.copy2(src, self.artifacts / f"crash-{src.parent.name}.log")
+
+    def alive(self) -> bool:
+        return self.proc is not None and self.proc.poll() is None
+
+    def get(self, path: str, *, allow404: bool = False, timeout: float = 5.0):
+        url = f"http://127.0.0.1:{self.port}/koreader{path}"
+        req = urllib.request.Request(url)
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return resp.status, resp.read().decode("utf-8", "replace")
+        except urllib.error.HTTPError as e:
+            if allow404 and e.code == 404:
+                return 404, ""
+            raise SmokeError(f"httpinspector {path} -> HTTP {e.code}: {e.read().decode('utf-8','replace')[:500]}")
+        except Exception as e:
+            if self.alive():
+                raise SmokeError(f"httpinspector unreachable at {url}: {e}")
+            raise SmokeError(f"KOReader exited while waiting for {url}; see {self.log_path}")
+
+    def get_json(self, path: str, *, allow404: bool = False):
+        status, text = self.get(path, allow404=allow404)
+        if status == 404:
+            return None
+        text = text.strip()
+        try:
+            return json.loads(text)
+        except Exception:
+            return text
+
+    def broadcast(self, event: str) -> None:
+        self.get(f"/broadcast/{urllib.parse.quote(event)}")
+
+    def wait_ready(self, timeout: float = 90) -> None:
+        deadline = time.time() + timeout
+        last = None
+        while time.time() < deadline:
+            if not self.alive():
+                raise SmokeError(f"KOReader exited during startup; see {self.log_path}")
+            try:
+                status, _ = self.get("/", timeout=2)
+                if status == 200:
+                    self.refresh_window()
+                    self.dismiss_startup()
+                    return
+            except SmokeError as e:
+                last = e
+            time.sleep(0.5)
+        raise SmokeError(f"httpinspector did not come up; last error: {last}; see {self.log_path}")
+
+    def dismiss_startup(self) -> None:
+        for _ in range(8):
+            top = self.top_widget()
+            if not top or top[1] not in {"InfoMessage", "ConfirmBox", "ButtonDialog"}:
+                return
+            self.key("Escape")
+            time.sleep(0.4)
+
+    def refresh_window(self) -> None:
+        candidates = run(["xdotool", "search", "--name", ".*"], check=False).stdout.strip().splitlines()
+        candidates = [c for c in candidates if c.strip()]
+        if not candidates:
+            raise SmokeError("could not find a KOReader X window")
+        best = None
+        for wid in reversed(candidates):
+            geo = run(["xdotool", "getwindowgeometry", "--shell", wid], check=False).stdout
+            name = run(["xdotool", "getwindowname", wid], check=False).stdout.strip()
+            m = re.search(r"^WIDTH=(\d+)$", geo, re.M)
+            mh = re.search(r"^HEIGHT=(\d+)$", geo, re.M)
+            mx = re.search(r"^X=(-?\d+)$", geo, re.M)
+            my = re.search(r"^Y=(-?\d+)$", geo, re.M)
+            if not (m and mh):
+                continue
+            w, h = int(m.group(1)), int(mh.group(1))
+            score = (w == self.args.size_w and h == self.args.size_h, "koreader" in name.lower())
+            if best is None or score > best[0]:
+                best = (score, wid, int(mx.group(1)) if mx else 0, int(my.group(1)) if my else 0)
+        if best is None:
+            raise SmokeError("could not find a KOReader X window")
+        _, self.win, x, y = best
+        self.offset = (x, y)
+
+    def key(self, key: str) -> None:
+        run(["xdotool", "key", "--window", self.win, key])
+
+    def type_text(self, text: str) -> None:
+        # xdotool type is slow for long strings but reliable for short inputs.
+        run(["xdotool", "type", "--window", self.win, "--delay", "12", text])
+
+    def tap(self, x: float, y: float, *, hold: float = 0.0) -> None:
+        ox, oy = self.offset
+        run(["xdotool", "mousemove", str(ox + round(x)), str(oy + round(y))])
+        run(["xdotool", "click", "1"])
+        if hold:
+            time.sleep(hold)
+
+    def hold_drag(self, x1, y1, x2, y2, *, hold=0.8, steps=12, step_delay=0.03) -> None:
+        ox, oy = self.offset
+        x1, y1, x2, y2 = ox + round(x1), oy + round(y1), ox + round(x2), oy + round(y2)
+        run(["xdotool", "mousemove", str(x1), str(y1), "mousedown", "1"])
+        time.sleep(hold)
+        for i in range(1, steps + 1):
+            run(["xdotool", "mousemove", str(round(x1 + (x2 - x1) * i / steps)), str(round(y1 + (y2 - y1) * i / steps))])
+            time.sleep(step_delay)
+        run(["xdotool", "mouseup", "1"])
+
+    def hold_at(self, x, y, seconds: float) -> None:
+        ox, oy = self.offset
+        run(["xdotool", "mousemove", str(ox + round(x)), str(oy + round(y)), "mousedown", "1"])
+        time.sleep(seconds)
+        run(["xdotool", "mouseup", "1"])
+
+    def dismiss_dialogs(self, classes, *, timeout=6.0):
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            top = self.top_widget()
+            if not top or top[1] not in classes:
+                return top
+            if top[1] == "ButtonDialog":
+                self.tap(5, 5)  # outside the movable dialog closes it without choosing a button
+            else:
+                self.key("Escape")
+            time.sleep(0.25)
+        raise SmokeError(f"timed out dismissing dialogs {sorted(classes)}")
+
+    def screenshot(self, name: str) -> Path:
+        self.refresh_window()
+        out = self.artifacts / name
+        last = None
+        for _ in range(3):
+            p = run(["import", "-window", self.win, str(out)], check=False)
+            if p.returncode == 0 and out.exists() and out.stat().st_size > 0:
+                return out
+            last = p.stdout[-500:]
+            time.sleep(0.3)
+        ox, oy = self.offset
+        p = run([
+            "import", "-window", "root",
+            "-crop", f"{self.args.size_w}x{self.args.size_h}+{ox}+{oy}",
+            str(out),
+        ], check=False)
+        if p.returncode != 0 or not out.exists() or out.stat().st_size == 0:
+            raise SmokeError(f"screenshot failed: {last or p.stdout[-500:]}")
+        return out
+
+    def close_board(self) -> None:
+        self.tap(self.args.size_w - 30, 24)  # TitleBar close button
+        self.wait_for(lambda: self.find_widget("BoardView") is None, timeout=6, desc="board closed")
+
+    # httpinspector UI helpers -------------------------------------------------
+    def stack_classes(self) -> dict[int, str]:
+        status, text = self.get("/UIManager/_window_stack/")
+        count = max([int(n) for n in re.findall(r"/_window_stack/(\d+)", text)] or [0])
+        classes = {}
+        for i in range(1, count + 1):
+            page = self.get(f"/UIManager/_window_stack/{i}/widget/", allow404=True)[1]
+            m = re.search(r"<em>([^<]+)</em> instance", page)
+            if m:
+                classes[i] = m.group(1)
+        return classes
+
+    def top_widget(self):
+        classes = self.stack_classes()
+        if not classes:
+            return None
+        i = max(classes)
+        return i, classes[i]
+
+    def find_widget(self, name: str):
+        classes = self.stack_classes()
+        for i in sorted(classes, reverse=True):
+            if classes[i] == name:
+                return i
+        return None
+
+    def widget_get(self, index: int, rel: str, *, allow404: bool = False):
+        return self.get_json(f"/UIManager/_window_stack/{index}/widget/{rel}", allow404=allow404)
+
+    def widget_array(self, index: int, name: str, rel_for_item):
+        items = []
+        for i in range(1, 100):
+            try:
+                item = rel_for_item(i)
+            except SmokeError:
+                break
+            if item is None:
+                break
+            items.append(item)
+        return items
+
+    def frame_array(self, index: int, name: str, dimen_rel: str = "frame/dimen"):
+        def one(i):
+            ident = self.widget_get(index, f"{name}/{i}/id", allow404=True)
+            if ident is None:
+                return None
+            dimen = self.widget_get(index, f"{name}/{i}/{dimen_rel}", allow404=True)
+            return {"id": ident, "dimen": dimen}
+        return self.widget_array(index, name, one)
+
+    def column_rects(self, index: int):
+        def one(i):
+            ident = self.widget_get(index, f"column_rects/{i}/id", allow404=True)
+            if ident is None:
+                return None
+            rect = self.widget_get(index, f"column_rects/{i}/rect", allow404=True)
+            return {"id": ident, "rect": rect}
+        return self.widget_array(index, "column_rects", one)
+
+    def board_index(self):
+        idx = self.find_widget("BoardView")
+        if idx is None:
+            raise SmokeError("BoardView is not on the window stack")
+        return idx
+
+    def board(self):
+        idx = self.board_index()
+        data = self.widget_get(idx, "getBoard/")
+        if isinstance(data, list):
+            data = data[0] if data else None
+        if not isinstance(data, dict) or "columns" not in data:
+            raise SmokeError(f"getBoard returned unexpected data: {str(data)[:300]}")
+        return data
+
+    def column(self, board, name):
+        for col in board.get("columns") or []:
+            if col.get("name") == name:
+                return col
+        raise SmokeError(f"column {name!r} not found")
+
+    def card(self, board, card_id):
+        card = (board.get("cards") or {}).get(card_id)
+        if not card:
+            raise SmokeError(f"card {card_id} not found")
+        return card
+
+    def wait_for(self, fn, *, timeout=8.0, interval=0.25, desc="condition"):
+        deadline = time.time() + timeout
+        last = None
+        while time.time() < deadline:
+            try:
+                val = fn()
+                if val:
+                    return val
+            except SmokeError as e:
+                last = e
+            except Exception as e:  # noqa: BLE001 - polling helper
+                last = e
+            time.sleep(interval)
+        raise SmokeError(f"timed out waiting for {desc}" + (f"; last error: {last}" if last else ""))
+
+    def wait_class(self, name: str, timeout=8.0):
+        return self.wait_for(lambda: self.top_widget() if self.top_widget() and self.top_widget()[1] == name else None,
+                             timeout=timeout, desc=f"top widget {name}")
+
+    def click_dialog_button(self, text: str, *, timeout=8.0) -> None:
+        def find():
+            top = self.top_widget()
+            if not top:
+                return None
+            idx, cls = top
+            for base in ("buttontable", "button_table"):
+                for row in range(1, 30):
+                    for col in range(1, 8):
+                        prefix = f"{base}/buttons_layout/{row}/{col}"
+                        label = self.widget_get(idx, f"{prefix}/text", allow404=True)
+                        if label is None:
+                            continue
+                        label = str(label).strip()
+                        if label == text or text.lower() in label.lower():
+                            dimen = self.widget_get(idx, f"{prefix}/dimen", allow404=True)
+                            if isinstance(dimen, dict) and all(k in dimen for k in ("x", "y", "w", "h")):
+                                return idx, cls, dimen
+            return None
+        found = self.wait_for(find, timeout=timeout, desc=f"button {text!r}")
+        _, cls, dimen = found
+        self.tap(dimen["x"] + dimen["w"] / 2, dimen["y"] + dimen["h"] / 2)
+        log(f"clicked {text!r} in {cls}")
+
+    def open_board_menu(self) -> None:
+        idx = self.board_index()
+        title = self.widget_get(idx, "title_bar/title", allow404=True)
+        log(f"opening board menu for {title!r}")
+        # TitleBar left icon is the menu button; tapping it keeps the board open.
+        self.tap(28, 24)
+        top = self.wait_class("ButtonDialog", timeout=6)
+        if top[1] != "ButtonDialog":
+            raise SmokeError(f"board menu did not open; top={top}")
+
+    def menu_items(self, index: int):
+        items = []
+        for i in range(1, 60):
+            dimen = self.widget_get(index, f"item_group/{i}/dimen", allow404=True)
+            if not isinstance(dimen, dict):
+                break
+            text = self.widget_get(index, f"item_group/{i}/entry/text", allow404=True)
+            path = self.widget_get(index, f"item_group/{i}/entry/path", allow404=True)
+            items.append({"dimen": dimen, "text": text, "path": path})
+        return items
+
+    def choose_pathchooser_item(self, predicate, desc: str) -> None:
+        top = self.wait_class("PathChooser", timeout=8)
+        idx = top[0]
+        time.sleep(0.4)
+        items = self.menu_items(idx)
+        target = next((item for item in items if predicate(item)), None)
+        if target is None:
+            seen = [(item.get("text"), item.get("path")) for item in items[:6]]
+            raise SmokeError(f"{desc} not found in PathChooser items: {seen}")
+        d = target["dimen"]
+        self.hold_at(d["x"] + d["w"] / 2, d["y"] + d["h"] / 2, seconds=0.8)
+        self.click_dialog_button("Choose", timeout=8)
+        log(f"chose {desc}")
+
+
+def lua_literal(value):
+    if value is None:
+        return "nil"
+    if value is True:
+        return "true"
+    if value is False:
+        return "false"
+    if isinstance(value, (int, float)):
+        return repr(value)
+    if isinstance(value, str):
+        return json.dumps(value)
+    if isinstance(value, list):
+        return "{ " + ", ".join(lua_literal(v) for v in value) + " }"
+    if isinstance(value, dict):
+        parts = []
+        for key, val in value.items():
+            if val is None:
+                continue
+            parts.append(f"[{lua_literal(key)}] = {lua_literal(val)}")
+        return "{ " + ", ".join(parts) + " }"
+    raise SmokeError(f"cannot encode {type(value).__name__} as Lua")
+
+
+def write_seed(home: Path, artifacts: Path, port: int) -> None:
+    settings = home / "settings"
+    settings.mkdir(parents=True, exist_ok=True)
+    files = home / "files"
+    files.mkdir(parents=True, exist_ok=True)
+
+    now = int(time.time())
+    day = 86400
+
+    def card(cid, title, notes="", checklist=None, moved=None):
+        return {
+            "id": cid,
+            "title": title,
+            "notes": notes,
+            "created": now - 10 * day,
+            "updated": now - day,
+            "moved": moved if moved is not None else now - day,
+            "archived": False,
+            "checklist": checklist or [],
+        }
+
+    def column(cid, name, cards):
+        return {"id": cid, "name": name, "cards": cards, "collapsed": False}
+
+    b1_cards = {}
+    b1_cards["k1"] = card("k1", "Smoke first card", "Line one\nLine two", [
+        {"text": "First item", "done": False},
+        {"text": "Second item", "done": True},
+    ])
+    b1_cards["k2"] = card("k2", "Smoke checklist card", "", [
+        {"text": "Checklist alpha", "done": False},
+        {"text": "Checklist beta", "done": False},
+    ])
+    for i in range(3, 13):
+        b1_cards[f"k{i}"] = card(f"k{i}", f"Smoke card {i:02d}", moved=now - (i * day))
+    b1_cards["k13"] = card("k13", "Smoke doing card")
+    b1_cards["k14"] = card("k14", "Smoke done card")
+    b1_cards["k15"] = card("k15", "Smoke archived card")
+    b1_cards["k15"]["archived"] = True
+
+    board1 = {
+        "id": "b1",
+        "name": "Smoke board",
+        "columns": [
+            column("c1", "To Do", [f"k{i}" for i in range(1, 13)]),
+            column("c2", "Doing", ["k13"]),
+            column("c3", "Blocked", []),
+            column("c4", "Done", ["k14"]),
+        ],
+        "cards": b1_cards,
+        "archived": ["k15"],
+        "next_id": 16,
+        "today_column": "c2",
+    }
+
+    b2_cards = {"k21": card("k21", "Today smoke card", "Grouped by today_column")}
+    board2 = {
+        "id": "b2",
+        "name": "Today board",
+        "columns": [
+            column("t1", "Backlog", []),
+            column("t2", "Doing", ["k21"]),
+            column("t3", "Done", []),
+        ],
+        "cards": b2_cards,
+        "archived": [],
+        "next_id": 22,
+        "today_column": "t2",
+    }
+
+    state = {"version": 2, "current_board": "b1", "boards": [board1, board2]}
+    lua = "local dump = dofile(arg[2] .. '/frontend/dump.lua')\n"
+    lua += "local state = " + lua_literal(state) + "\n"
+    lua += "local path = arg[1] .. '/settings/kanban.lua'\n"
+    lua += "local file = assert(io.open(path, 'w'))\n"
+    lua += "file:write('return { state = ' .. dump(state) .. ' }\\n')\n"
+    lua += "file:close()\n"
+    run([LUA, "-", str(home), str(LIB)], input=lua, timeout=30)
+
+    (settings / "gestures.lua").write_text(
+        "return {\n"
+        "  gesture_fm = { tap_left_bottom_corner = { kanban_open = true }, tap_right_bottom_corner = { kanban_add_card = true } },\n"
+        "  gesture_reader = { tap_left_bottom_corner = { kanban_open = true }, tap_right_bottom_corner = { kanban_add_card = true } },\n"
+        "  custom_multiswipes = {},\n"
+        "}\n"
+    )
+    (settings / "kanban-sleepscreen.lua").write_text("return { enabled = true }\n")
+    # G_reader_settings lives in the data dir root; plugin LuaSettings live in settings/.
+    for plugin_dir in (LIB / "plugins", home / "plugins"):
+        plugin_dir.mkdir(parents=True, exist_ok=True)
+        link = plugin_dir / "kanban.koplugin"
+        if link.exists() or link.is_symlink():
+            link.unlink()
+        link.symlink_to(PLUGIN)
+    (home / "settings.reader.lua").write_text(
+        "return {\n"
+        f"  home_dir = {json.dumps(str(files))},\n"
+        f"  kanban_export_dir = {json.dumps(str(files))},\n"
+        f"  quickstart_shown_version = 9999999999,\n"
+        "  httpinspector = { autostart = true, port = " + str(port) + " },\n"
+        "}\n"
+    )
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--build", choices=["desktop", "emulator"], default="emulator")
+    ap.add_argument("--size", default="600x800", help="KOReader emulated screen size WxH")
+    ap.add_argument("--display", default=None, help="X display to use (default: first free :99+)")
+    ap.add_argument("--port", type=int, default=8080)
+    ap.add_argument("--artifacts", default=str(REPO / ".agents" / "artifacts" / "smoke"))
+    ap.add_argument("--keep", action="store_true", help="keep KOReader home and logs")
+    ap.add_argument("--skip-sleep", action="store_true", help="skip F2 sleep-screen check (desktop build)")
+    ap.add_argument("--skip-markdown", action="store_true")
+    ap.add_argument("--only", default="", help="comma-separated step names to run (default all)")
+    args = ap.parse_args()
+
+    m = re.fullmatch(r"([1-9][0-9]*)x([1-9][0-9]*)", args.size)
+    if not m:
+        raise SmokeError(f"invalid --size {args.size!r}; expected WxH")
+    args.size_w, args.size_h = int(m.group(1)), int(m.group(2))
+
+    artifacts = Path(args.artifacts).resolve()
+    artifacts.mkdir(parents=True, exist_ok=True)
+    home = artifacts / "koreader-home"
+    if home.exists():
+        shutil.rmtree(home)
+    home.mkdir(parents=True)
+
+    only = {s.strip() for s in args.only.split(",") if s.strip()}
+    def enabled(name: str) -> bool:
+        return not only or name in only
+
+    ensure_dependencies()
+    disp = Display(free_display(args.display), artifacts, args.size_w, args.size_h)
+    disp.start()
+    os.environ["DISPLAY"] = disp.name
+    ko = Koreader(args, home, artifacts, disp)
+    failures = []
+
+    def check(name, fn):
+        if not enabled(name):
+            log(f"skip {name}")
+            return
+        log(f"--- {name}")
+        try:
+            fn()
+            ko.screenshot(f"{name}.png")
+            log(f"ok {name}")
+        except Exception as e:  # noqa: BLE001 - smoke harness reports all failures
+            try:
+                ko.screenshot(f"{name}-FAIL.png")
+            except Exception:
+                pass
+            failures.append((name, e))
+            log(f"FAIL {name}: {e}")
+
+    try:
+        write_seed(home, artifacts, args.port)
+        ko.start()
+
+        def board_open_from_tools():
+            # Prefer the real Tools-menu callback when the menu table is reachable;
+            # fall back to the registered dispatcher event so the smoke still covers
+            # the same open path if the menu widget is not built yet.
+            for path in (
+                "/ui/menu/menu_items/kanban/sub_item_table/1/callback/",
+            ):
+                try:
+                    status, _ = ko.get(path, allow404=True)
+                    if status == 200:
+                        ko.get(path)
+                        break
+                except SmokeError:
+                    pass
+            else:
+                ko.broadcast("KanbanOpen")
+            ko.wait_for(lambda: ko.find_widget("BoardView"), timeout=8, desc="BoardView")
+
+        check("board-tools", board_open_from_tools)
+
+        def gestures_open_add_today():
+            # Close the board, then use the seeded corner gestures.
+            ko.close_board()
+            ko.tap(30, args.size_h - 30)  # tap_left_bottom_corner -> kanban_open
+            ko.wait_for(lambda: ko.find_widget("BoardView"), timeout=8, desc="gesture open")
+            ko.close_board()
+            ko.tap(args.size_w - 30, args.size_h - 30)  # tap_right_bottom_corner -> kanban_add_card
+            ko.wait_class("MultiInputDialog", timeout=8)
+            ko.type_text("Smoke gesture card")
+            ko.key("Return")
+            ko.wait_for(lambda: ko.find_widget("MultiInputDialog") is None and ko.find_widget("InputDialog") is None,
+                        timeout=8, desc="add-card dialog closed")
+            ko.broadcast("KanbanOpen")
+            ko.wait_for(lambda: ko.find_widget("BoardView") is not None, timeout=8, desc="board after add")
+            board = ko.board()
+            col = ko.column(board, "To Do")
+            assert any(ko.card(board, cid).get("title") == "Smoke gesture card" for cid in col["cards"]), "gesture card missing"
+            ko.broadcast("KanbanToday")
+            ko.wait_class("TodayView", timeout=8)
+            ko.screenshot("today.png")
+            ko.tap(args.size_w - 30, 24)
+            ko.wait_for(lambda: ko.find_widget("BoardView") is not None, timeout=8, desc="board after Today")
+
+        check("gestures", gestures_open_add_today)
+
+        def card_view_checklist():
+            idx = ko.board_index()
+            targets = ko.frame_array(idx, "card_targets")
+            target = next((t for t in targets if t["id"] == "k2"), None)
+            if not target:
+                raise SmokeError("card k2 is not visible on the current card page")
+            d = target["dimen"]
+            ko.tap(d["x"] + d["w"] / 2, d["y"] + d["h"] / 2)
+            ko.wait_class("CardView", timeout=8)
+            try:
+                # Add checklist item control: right of the two top buttons.
+                ko.tap(args.size_w * 0.74, 78)
+                ko.wait_class("InputDialog", timeout=8)
+                ko.type_text("Smoke added item")
+                ko.click_dialog_button("Add")
+                ko.wait_for(lambda: ko.find_widget("CardView") is not None, timeout=8, desc="CardView after add item")
+                card = ko.card(ko.board(), "k2")
+                texts = [i.get("text") for i in card.get("checklist", [])]
+                assert "Smoke added item" in texts, f"checklist item missing: {texts}"
+                # The checklist row is inside a scrolling container; probe a few row centers
+                # rather than hard-coding one fragile y coordinate.
+                toggled = False
+                for y in (220, 235, 250, 265, 280):
+                    ko.tap(213, y)
+                    try:
+                        ko.wait_for(lambda: ko.card(ko.board(), "k2").get("checklist", [{}])[0].get("done") is True,
+                                    timeout=1.5, desc="first checklist item toggled")
+                        toggled = True
+                        break
+                    except SmokeError:
+                        pass
+                assert toggled, "first checklist item did not toggle"
+            finally:
+                for _ in range(3):
+                    top = ko.top_widget()
+                    if not top or top[1] not in {"InputDialog", "MultiInputDialog", "ButtonDialog", "ConfirmBox", "InfoMessage"}:
+                        break
+                    ko.key("Escape")
+                    time.sleep(0.2)
+                if ko.find_widget("CardView") is not None:
+                    ko.tap(args.size_w - 30, 24)  # CardView TitleBar close button
+                    ko.wait_for(lambda: ko.find_widget("BoardView") is not None, timeout=6, desc="board after CardView")
+
+        check("card-view", card_view_checklist)
+
+        def drag_move_and_edge():
+            idx = ko.board_index()
+            cols = {c["id"]: c for c in ko.column_rects(idx)}
+            cards = {t["id"]: t for t in ko.frame_array(idx, "card_targets")}
+            if "k1" not in cards or "k2" not in cards or "k3" not in cards:
+                raise SmokeError("first page cards k1-k3 are not visible")
+            f1, f2, f3 = (cards[x]["dimen"] for x in ("k1", "k2", "k3"))
+            col = cols["c1"]["rect"]
+            # Move k1 below k2 inside To Do.
+            gap_y = (f2["y"] + f2["h"] + f3["y"]) / 2
+            ko.hold_drag(f1["x"] + f1["w"] / 2, f1["y"] + f1["h"] / 2,
+                         col["x"] + col["w"] / 2, gap_y, hold=0.9)
+            def order():
+                return ko.column(ko.board(), "To Do")["cards"][:3]
+            ko.wait_for(lambda: order() == ["k2", "k1", "k3"], timeout=8, desc="within-column move")
+            # The move pops a modal Undo prompt; close it without undoing so the board is draggable again.
+            ko.dismiss_dialogs({"ButtonDialog"}, timeout=8)
+            # Edge paging: hold k2 at the bottom edge long enough for the plugin's 0.8s page timer.
+            idx = ko.board_index()
+            cols = {c["id"]: c for c in ko.column_rects(idx)}
+            cards = {t["id"]: t for t in ko.frame_array(idx, "card_targets")}
+            headers = {h["id"]: h for h in ko.frame_array(idx, "header_targets")}
+            if "k2" not in cards:
+                raise SmokeError("k2 not visible for edge paging")
+            header = headers.get("c1")
+            if not header:
+                raise SmokeError("To Do header target missing")
+            before = [t["id"] for t in ko.frame_array(idx, "card_targets")]
+            f = cards["k2"]["dimen"]
+            col = cols["c1"]["rect"]
+            sx, sy = f["x"] + f["w"] / 2, f["y"] + f["h"] / 2
+            ex, ey = col["x"] + col["w"] / 2, col["y"] + col["h"] - 24
+            ox, oy = ko.offset
+            def abs_x(v): return str(ox + round(v))
+            def abs_y(v): return str(oy + round(v))
+            run(["xdotool", "mousemove", abs_x(sx), abs_y(sy), "mousedown", "1"])
+            time.sleep(0.9)
+            for i in range(1, 9):
+                run(["xdotool", "mousemove", abs_x(sx + (ex - sx) * i / 8), abs_y(sy + (ey - sy) * i / 8)])
+                time.sleep(0.05)
+            time.sleep(1.3)
+            after = [t["id"] for t in ko.frame_array(ko.board_index(), "card_targets")]
+            # Release over the column header: same-column header drops cancel, so no second Undo prompt.
+            hd = header["dimen"]
+            run(["xdotool", "mousemove", abs_x(hd["x"] + hd["w"] / 2), abs_y(hd["y"] + hd["h"] / 2)])
+            time.sleep(0.2)
+            run(["xdotool", "mouseup", "1"])
+            time.sleep(0.5)
+            assert after != before, f"edge paging did not change visible cards: {before} -> {after}"
+
+        check("drag", drag_move_and_edge)
+
+        def bulk_archive_undo():
+            ko.open_board_menu()
+            ko.click_dialog_button("Select cards")
+            idx = ko.board_index()
+            board = ko.board()
+            todo_ids = set(ko.column(board, "To Do")["cards"])
+            cols = {c["id"]: c for c in ko.column_rects(idx)}
+            c1 = cols["c1"]["rect"]
+            targets = [t for t in ko.frame_array(idx, "card_targets")
+                       if t["id"] in todo_ids and t.get("dimen")
+                       and c1["x"] <= t["dimen"]["x"] < c1["x"] + c1["w"]]
+            selected_ids = [t["id"] for t in targets[:2]]
+            if len(selected_ids) < 2:
+                raise SmokeError(f"need two visible To Do cards for bulk select, got {selected_ids}")
+            for cid in selected_ids:
+                d = next(t["dimen"] for t in targets if t["id"] == cid)
+                ko.tap(d["x"] + d["w"] / 2, d["y"] + d["h"] / 2)
+                time.sleep(0.2)
+            selected = ko.widget_get(idx, "selected_cards", allow404=True)
+            assert selected, f"selected_cards empty after taps: {selected}"
+            # Footer Archive button in selection mode (600x800 layout).
+            ko.tap(args.size_w * 0.56, args.size_h - 20)
+            def archived():
+                board = ko.board()
+                archived_ids = board.get("archived") or []
+                return all(cid in archived_ids for cid in selected_ids)
+            ko.wait_for(archived, timeout=8, desc="bulk archive")
+            ko.click_dialog_button("Undo", timeout=8)
+            def restored():
+                board = ko.board()
+                col = ko.column(board, "To Do")
+                archived_ids = board.get("archived") or []
+                return all(cid in col["cards"] for cid in selected_ids) and not any(cid in archived_ids for cid in selected_ids)
+            ko.wait_for(restored, timeout=8, desc="bulk undo")
+
+        check("bulk", bulk_archive_undo)
+
+        def markdown_roundtrip():
+            ko.open_board_menu()
+            ko.click_dialog_button("Export to Markdown…")
+            ko.choose_pathchooser_item(
+                lambda it: str(it.get("path") or "").endswith("/.")
+                    or "choose current folder" in str(it.get("text") or "").lower(),
+                "current export folder",
+            )
+            md = home / "files" / "kanban-Smoke board.md"
+            ko.wait_for(lambda: md.exists(), timeout=8, desc="markdown export file")
+            text = md.read_text()
+            assert "# Smoke board" in text and "Smoke first card" in text, "export missing expected Markdown"
+            ko.dismiss_dialogs({"InfoMessage"}, timeout=5)
+            before_import_id = ko.board().get("id")
+            ko.open_board_menu()
+            ko.click_dialog_button("Import from Markdown…")
+            # home_dir == files dir; the exported .md is the selectable file.
+            ko.choose_pathchooser_item(
+                lambda it: "kanban-" in str(it.get("path") or "")
+                    and str(it.get("path") or "").lower().endswith(".md"),
+                "exported Markdown file",
+            )
+            def imported():
+                board = ko.board()
+                return (board.get("id") != before_import_id and board.get("name") == "Smoke board"
+                        and len(board.get("columns") or []) == 4)
+            ko.wait_for(imported, timeout=10, desc="markdown import")
+
+        check("markdown", markdown_roundtrip if not args.skip_markdown else (lambda: None))
+
+        def sleep_screen():
+            if args.build != "emulator":
+                log("sleep screen requires emulator build; skipping")
+                return
+            if args.skip_sleep:
+                log("sleep screen skipped by --skip-sleep")
+                return
+            # Board may be behind dialogs after markdown; return to FileManager first.
+            for _ in range(4):
+                top = ko.top_widget()
+                if not top or top[1] not in {"ButtonDialog", "InfoMessage", "InputDialog", "MultiInputDialog", "PathChooser"}:
+                    break
+                ko.key("Escape")
+                time.sleep(0.3)
+            ko.broadcast("KanbanOpen")
+            ko.wait_for(lambda: ko.find_widget("BoardView") is not None, timeout=8, desc="board before sleep")
+            ko.screenshot("before-suspend.png")
+            ko.refresh_window()
+            run(["xdotool", "key", "--window", ko.win, "F2"])
+            time.sleep(3)
+            ko.screenshot("suspend.png")
+            # Emulator resume is F2 as well; verify httpinspector comes back.
+            run(["xdotool", "key", "--window", ko.win, "F2"])
+            ko.wait_ready(timeout=30)
+            ko.wait_for(lambda: ko.find_widget("BoardView") is not None, timeout=10, desc="board after resume")
+            enabled = ko.get_json("/globals/package/loaded/sleepscreen/isEnabled/", allow404=True)
+            if isinstance(enabled, list):
+                enabled = enabled[0] if enabled else None
+            assert enabled in (True, "true", "True"), f"SleepScreen.isEnabled -> {enabled}"
+
+        check("sleep", sleep_screen)
+
+    finally:
+        ko.stop()
+        disp.stop()
+        if args.keep:
+            log(f"keeping artifacts and KO_HOME at {artifacts}")
+        else:
+            # Keep screenshots/logs, remove the bulky KO_HOME unless debugging.
+            if home.exists() and not args.keep:
+                shutil.rmtree(home, ignore_errors=True)
+
+    # Crash log scan: KOReader writes crash.log next to the data dir; stdout log is always kept.
+    crash_hits = []
+    for path in artifacts.glob("crash-*.log"):
+        text = path.read_text(errors="replace")
+        if "stack traceback" in text.lower() or "Lua error" in text:
+            crash_hits.append(path.name)
+    stdout = (artifacts / "koreader.stdout.log").read_text(errors="replace") if (artifacts / "koreader.stdout.log").exists() else ""
+    if "stack traceback" in stdout.lower() or "Lua error" in stdout.lower():
+        crash_hits.append("koreader.stdout.log")
+
+    if failures or crash_hits:
+        print("\nSMOKE FAILED")
+        for name, err in failures:
+            print(f"- {name}: {err}")
+        if crash_hits:
+            print(f"- crash/traceback hits: {', '.join(crash_hits)}")
+        print(f"artifacts: {artifacts}")
+        return 1
+    print(f"\nSMOKE PASSED; artifacts: {artifacts}")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except SmokeError as e:
+        print(f"[smoke] ERROR: {e}", file=sys.stderr)
+        raise SystemExit(2)

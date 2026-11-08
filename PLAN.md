@@ -526,6 +526,11 @@ Ideas the owner wants to keep but not build yet:
 ## How to verify
 
 - Unit tests: run `busted` from the repo root. It must pass before every commit.
+- Smoke: run `.agents/smoke` from the repo root for the repeatable emulator pass
+  (board open, gestures/Today, card checklist, drag/edge paging, bulk archive/undo,
+  Markdown round-trip, and sleep-screen resume on the emulator build). It uses
+  `.agents/setup`, Xvfb, an isolated KO_HOME, httpinspector and X11 input, captures
+  screenshots/logs under `.agents/artifacts/smoke`, and fails on KOReader errors.
 - Manual: start KOReader (the AppImage or `./kodev run`) with the plugin linked or
   copied into its `plugins/` directory, then follow the phase's acceptance criteria.
   Check `crash.log` afterwards.
@@ -555,6 +560,10 @@ These add to the per-phase orb notes above.
   `.agents/emulator screenshot FILE` to capture the window and `.agents/emulator stop`
   to stop it. The default is 600×800, demo seed, desktop build; use the emulator build
   for F2 suspend/resume checks.
+- For repeatable regression before spending device time, prefer `.agents/smoke` over
+  the interactive `.agents/emulator` path. The smoke harness uses its own KO_HOME under
+  the artifacts directory, so it does not touch orb/user settings; `.agents/emulator`
+  remains the manual path for interactive screenshots and one-off state.
 - Undo test state before finishing: `today_column` choices, the sleep-screen option
   (turn it off from the UI so the screensaver settings are restored), and any data
   files copied into the emulator build's settings folder.
