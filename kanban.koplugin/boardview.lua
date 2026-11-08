@@ -164,11 +164,17 @@ function BoardView:layout(changed_columns)
     end
 
     local board = self:getBoard()
+    if self.label_filter and not Model.findLabel(board, self.label_filter) then
+        self.label_filter = nil
+        self.card_start = {}
+        changed_columns = nil
+    end
+    local filter = self.label_filter and Model.findLabel(board, self.label_filter)
     self.title_bar = changed_columns and self.title_bar or TitleBar:new{
         width = self.dimen.w,
         align = "center",
         -- The title is the board switcher: the ▼ marks it as tappable.
-        title = board and (board.name .. " ▼") or _("Kanban board"),
+        title = board and (board.name .. (filter and " [" .. filter.name .. "]" or "") .. " ▼") or _("Kanban board"),
         title_face = Font:getFace("smallinfofontbold"),
         with_bottom_line = true,
         bottom_line_color = Blitbuffer.COLOR_DARK_GRAY,
@@ -204,6 +210,9 @@ function BoardView:layout(changed_columns)
 
     local body_h = self.dimen.h - self.title_bar:getSize().h - footer:getSize().h
     local now_card = board and board.now_card and board.cards[board.now_card]
+    if now_card and self.label_filter and not Model.hasLabel(now_card, self.label_filter) then
+        now_card = nil
+    end
     local now_bar
     local now_bar_gap = Size.padding.small
     local columns_h = body_h
@@ -336,7 +345,10 @@ function BoardView:buildColumns(board, first, last, body_h, changed_columns)
     local row = HorizontalGroup:new{ align = "top", HorizontalSpan:new{ width = outer } }
     local x = outer
     for index = first, last do
-        local column = board.columns[index]
+        local source_column = board.columns[index]
+        local column = {}
+        for key, value in pairs(source_column) do column[key] = value end
+        column.cards = Model.filteredCards(board, source_column, self.label_filter)
         local col_w = column.collapsed and collapsed_width or expanded_width
         local column_widget
         local cached = changed_columns and not changed_columns[column.id] and self.column_cache[column.id]
@@ -418,6 +430,10 @@ function BoardView:buildColumns(board, first, last, body_h, changed_columns)
                     card.title, text_w, title_face, card_id == self.moving_card)
                 title_lines[card_id] = lines
                 local marker_text = cardMarkerText(card)
+                local labels = Model.labelText(board, card)
+                if labels ~= "" then
+                    marker_text = labels .. (marker_text and " · " .. marker_text or "")
+                end
                 marker_texts[card_id] = marker_text
                 card_heights[position] = lines * line_h + glyph_extra_height
                     + (marker_text and marker_line_h + COLUMN_MARKER_GAP or 0)
@@ -729,7 +745,7 @@ function BoardView:buildFooter(board, first, last)
         for index = tab_first, tab_last do
             local column = columns[index]
             local this_width = index == tab_last and tab_space - tab_width * (tab_count - 1) or tab_width
-            local count_text = tostring(#column.cards)
+            local count_text = tostring(#Model.filteredCards(board, column, self.label_filter))
             local count_widget = TextWidget:new{
                 text = count_text,
                 face = tab_font,
@@ -874,6 +890,14 @@ function BoardView:revealCard(column_id, index)
         return
     end
     self:revealColumn(column_index)
+    if self.label_filter then
+        local column = self:findColumn(column_id)
+        local target = column.cards[index]
+        index = 1
+        for position, id in ipairs(Model.filteredCards(self:getBoard(), column, self.label_filter)) do
+            if id == target then index = position; break end
+        end
+    end
     self.card_start[column_id] = index
 end
 
@@ -882,6 +906,7 @@ function BoardView:resetPosition()
     self.first_column = 1
     self.card_start = {}
     self.selected_cards = nil
+    self.label_filter = nil
 end
 
 function BoardView:dirtyRegions(columns)

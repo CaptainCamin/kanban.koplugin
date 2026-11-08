@@ -121,6 +121,12 @@ function CardView:layout()
         face = Font:getFace("infofont", 24),
         bold = true,
     })
+    local labels = Model.labelText(self.board_view:getBoard(), card)
+    if labels ~= "" then
+        table.insert(content, TextBoxWidget:new{
+            text = labels, width = content_width, face = Font:getFace("smallinfofont"),
+        })
+    end
     addSpace(content, Size.padding.large)
     table.insert(content, TextWidget:new{
         text = _("Notes"),

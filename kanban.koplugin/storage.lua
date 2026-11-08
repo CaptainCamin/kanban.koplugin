@@ -28,6 +28,16 @@ function Storage.migrate(state)
         end
         state.version = 2
     end
+    -- Additive fields keep existing version-2 files and undo snapshots compatible.
+    for _, board in ipairs(state.boards) do
+        board.labels = board.labels or {}
+        for _, card in pairs(board.cards) do card.labels = card.labels or {} end
+    end
+    if state.undo and state.undo.board then
+        local board = state.undo.board
+        board.labels = board.labels or {}
+        for _, card in pairs(board.cards) do card.labels = card.labels or {} end
+    end
     return state
 end
 

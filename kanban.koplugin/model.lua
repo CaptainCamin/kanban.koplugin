@@ -125,6 +125,7 @@ local function new_board(id, name)
         },
         cards = {},
         archived = {},
+        labels = {},
         next_id = 4,
     }
 end
@@ -205,6 +206,92 @@ function Model.deleteBoard(state, board_id)
     return true
 end
 
+-- Labels have stable IDs so names can change without changing assignments.
+function Model.findLabel(board, label_id)
+    for _, label in ipairs(board.labels or {}) do
+        if label.id == label_id then return label end
+    end
+end
+
+local function labelName(board, name, except_id)
+    name = trim(name)
+    if not name then return nil, "label name is required" end
+    for _, label in ipairs(board.labels or {}) do
+        if label.id ~= except_id and label.name:lower() == name:lower() then
+            return nil, "a label with this name already exists"
+        end
+    end
+    return name
+end
+
+function Model.addLabel(board, name)
+    local value, err = labelName(board, name)
+    if not value then return nil, err end
+    board.labels = board.labels or {}
+    table.insert(board.labels, { id = next_id(board, "l"), name = value })
+    return true
+end
+
+function Model.renameLabel(board, label_id, name)
+    local label = Model.findLabel(board, label_id)
+    if not label then return nil, "label not found" end
+    local value, err = labelName(board, name, label_id)
+    if not value then return nil, err end
+    label.name = value
+    return true
+end
+
+function Model.deleteLabel(board, label_id)
+    for index, label in ipairs(board.labels or {}) do
+        if label.id == label_id then
+            table.remove(board.labels, index)
+            for _, card in pairs(board.cards) do
+                for i = #(card.labels or {}), 1, -1 do
+                    if card.labels[i] == label_id then table.remove(card.labels, i) end
+                end
+            end
+            return true
+        end
+    end
+    return nil, "label not found"
+end
+
+function Model.setCardLabels(board, card_id, label_ids, clock)
+    local card = board.cards[card_id]
+    if not card then return nil, "card not found" end
+    local ids, seen = {}, {}
+    for _, id in ipairs(label_ids) do
+        if not Model.findLabel(board, id) then return nil, "label not found" end
+        if not seen[id] then ids[#ids + 1], seen[id] = id, true end
+    end
+    card.labels = ids
+    card.updated = now(clock)
+    return true
+end
+
+function Model.hasLabel(card, label_id)
+    return find_id(card.labels or {}, label_id) ~= nil
+end
+
+function Model.labelText(board, card)
+    local names = {}
+    for _, id in ipairs(card.labels or {}) do
+        local label = Model.findLabel(board, id)
+        if label then names[#names + 1] = "[" .. label.name .. "]" end
+    end
+    return table.concat(names, " ")
+end
+
+function Model.filteredCards(board, column, label_id)
+    local cards = {}
+    for _, id in ipairs(column.cards) do
+        if not label_id or Model.hasLabel(board.cards[id], label_id) then
+            cards[#cards + 1] = id
+        end
+    end
+    return cards
+end
+
 function Model.addColumn(board, name, index)
     name = trim(name)
     if not name then
@@ -265,6 +352,9 @@ function Model.addCard(board, column_id, fields, index, clock)
     if not title then
         return nil, "card title is required"
     end
+    for _, id in ipairs(fields.labels or {}) do
+        if not Model.findLabel(board, id) then return nil, "label not found" end
+    end
     local timestamp = now(clock)
     local card_id = next_id(board, "k")
     board.cards[card_id] = {
@@ -276,6 +366,7 @@ function Model.addCard(board, column_id, fields, index, clock)
         moved = timestamp,
         archived = false,
         checklist = {},
+        labels = copy_table(fields.labels or {}),
     }
     insert(column.cards, card_id, index)
     return true
@@ -289,6 +380,10 @@ function Model.editCard(board, card_id, fields, clock)
     local title = fields and trim(fields.title)
     if not title then
         return nil, "card title is required"
+    end
+    if fields.labels then
+        local ok, err = Model.setCardLabels(board, card_id, fields.labels, clock)
+        if not ok then return nil, err end
     end
     card.title = title
     card.notes = fields.notes or ""

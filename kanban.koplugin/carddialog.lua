@@ -206,10 +206,102 @@ local function promptName(args)
     dialog:onShowKeyboard()
 end
 
+function CardDialog.chooseLabels(board, selected, done)
+    local dialog
+    local buttons = {}
+    for label_index, label in ipairs(board.labels or {}) do
+        local id = label.id
+        buttons[#buttons + 1] = { {
+            text = (selected[id] and "☑ " or "☐ ") .. label.name,
+            callback = function()
+                selected[id] = not selected[id] or nil
+                UIManager:close(dialog)
+                CardDialog.chooseLabels(board, selected, done)
+            end,
+        } }
+    end
+    buttons[#buttons + 1] = { { text = _("Done"), callback = function()
+        UIManager:close(dialog)
+        done()
+    end } }
+    dialog = showDialog(ButtonDialog:new{
+        title = #buttons == 1 and _("Create labels from the board menu first.") or _("Card labels"),
+        buttons = buttons,
+    })
+end
+
+function CardDialog.showLabels(view)
+    local board = view:getBoard()
+    local dialog
+    local buttons = {}
+    for label_index, label in ipairs(board.labels or {}) do
+        local id, name = label.id, label.name
+        buttons[#buttons + 1] = {
+            { text = name, callback = function()
+                UIManager:close(dialog)
+                promptName{
+                    title = _("Rename label"), value = name, ok_text = _("Save"),
+                    empty_text = _("A label needs a name."),
+                    callback = function(value)
+                        view:commit(function() return Model.renameLabel(board, id, value) end)
+                        CardDialog.showLabels(view)
+                    end,
+                }
+            end },
+            { text = _("Delete"), callback = function()
+                UIManager:show(ConfirmBox:new{
+                    text = T(_("Delete label “%1” from this board and all its cards?"), name),
+                    ok_callback = function()
+                        UIManager:close(dialog)
+                        view:commit(function() return Model.deleteLabel(board, id) end,
+                            nil, nil, _("Label deleted"))
+                        CardDialog.showLabels(view)
+                    end,
+                })
+            end },
+        }
+    end
+    buttons[#buttons + 1] = { { text = _("Add label"), callback = function()
+        UIManager:close(dialog)
+        promptName{
+            title = _("Add label"), ok_text = _("Add"),
+            empty_text = _("A label needs a name."),
+            callback = function(name)
+                view:commit(function() return Model.addLabel(board, name) end)
+                CardDialog.showLabels(view)
+            end,
+        }
+    end } }
+    buttons[#buttons + 1] = { { text = _("Close"), callback = function() UIManager:close(dialog) end } }
+    dialog = showDialog(ButtonDialog:new{ title = _("Board labels (tap to rename)"), buttons = buttons })
+end
+
+function CardDialog.filterLabels(view)
+    local board = view:getBoard()
+    local dialog
+    local buttons = {}
+    local function filter(id)
+        UIManager:close(dialog)
+        view:resetPosition()
+        view.label_filter = id
+        view.moving_card = nil
+        view:refresh()
+    end
+    buttons[1] = { { text = _("All cards"), callback = function() filter(nil) end } }
+    for label_index, label in ipairs(board.labels or {}) do
+        local id = label.id
+        buttons[#buttons + 1] = { { text = label.name, callback = function() filter(id) end } }
+    end
+    buttons[#buttons + 1] = { { text = _("Cancel"), callback = function() UIManager:close(dialog) end } }
+    dialog = showDialog(ButtonDialog:new{ title = _("Filter by label"), buttons = buttons })
+end
+
 -- Card editor: a new card in `column_id`, or the existing card `card_id`.
 function CardDialog.editCard(view, column_id, card_id)
     local board = view:getBoard()
     local card = card_id and board.cards[card_id]
+    local selected = {}
+    for _, id in ipairs(card and card.labels or {}) do selected[id] = true end
     local dialog
     local function save()
         local fields = dialog:getFields()
@@ -221,7 +313,11 @@ function CardDialog.editCard(view, column_id, card_id)
             return
         end
         UIManager:close(dialog)
-        local values = { title = fields[1], notes = fields[2] }
+        local labels = {}
+        for label_index, label in ipairs(board.labels or {}) do
+            if selected[label.id] then labels[#labels + 1] = label.id end
+        end
+        local values = { title = fields[1], notes = fields[2], labels = labels }
         if card then
             view:commit(function() return Model.editCard(board, card_id, values) end)
         else
@@ -249,6 +345,9 @@ function CardDialog.editCard(view, column_id, card_id)
         -- Enter saves from the title field; the notes field takes new lines.
         enter_callback = save,
         buttons = {
+            { { text = _("Labels…"), callback = function()
+                CardDialog.chooseLabels(board, selected, function() end)
+            end } },
             {
                 {
                     text = _("Cancel"),
@@ -755,6 +854,13 @@ function CardDialog.showBoardMenu(view)
         title = board.name,
         use_info_style = false,
         buttons = {
+            { {
+                text = _("Labels…"),
+                callback = action(function() CardDialog.showLabels(view) end),
+            }, {
+                text = _("Filter by label…"),
+                callback = action(function() CardDialog.filterLabels(view) end),
+            } },
             { {
                 text = can_undo and T(_("Undo: %1"), undo.message) or _("Undo"),
                 enabled = can_undo and true or false,

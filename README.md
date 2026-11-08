@@ -10,6 +10,11 @@ boards, columns, and cards. Cards are not linked to books.
   detail view with scrollable notes and a checklist; tap items to toggle them, or
   add, edit and delete items. Its **Actions** button opens Edit, move/reorder and
   Archive actions.
+- Create, rename, and delete board labels from **☰ → Labels…**. Assign multiple
+  labels with **Labels…** in the new/edit card dialog. Labels appear as text badges
+  on cards and in the detail view. Use **☰ → Filter by label…** to show matching
+  cards, or **All cards** to clear the filter. Filters reset when switching boards.
+  Labels are saved locally and included in Markdown exports and imports.
 - Hold a card and slide it: a bar shows where it will land, and sliding onto a
   column tab moves it to that column. Or hold, lift, then tap a gap between
   cards, a column header or a tab. Lift where you picked it up to cancel. Turn
