@@ -52,6 +52,20 @@ boards, columns, and cards. Cards are not linked to books.
   portrait and landscape. Swipe to navigate column pages
   and card pages; the page-turn keys move between column pages.
 
+## Bookshelf module
+
+With [Bookshelf](https://github.com/AndyHazz/bookshelf.koplugin) 6.1 or newer
+enabled, Kanban also provides a **Kanban board** micro-module. Add it through
+Bookshelf's module picker and choose a board. Each instance remembers its own
+board, so you can add several cards for different boards.
+
+The module shows the board name, its pinned **Now** card, and up to three tasks
+from its in-progress column (the same column used by **Today**). Tap to open
+that board. Use **Module settings…** from the card's long-press menu to choose
+another board. If a chosen board is deleted, tap the card to choose again.
+Closing a board refreshes the module. Everything works offline; Bookshelf is
+optional and the module is included in the normal plugin zip.
+
 ## Screenshots
 
 | Board in portrait | Board in landscape |
@@ -88,4 +102,11 @@ Run the test suite from the repository root with:
 
 ```sh
 busted
+```
+
+The standalone Bookshelf module interaction checks run without KOReader or
+Bookshelf installed:
+
+```sh
+luajit spec/bookshelf_module_test.lua
 ```
