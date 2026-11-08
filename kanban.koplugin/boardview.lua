@@ -480,7 +480,7 @@ function BoardView:buildColumns(board, first, last, body_h, changed_columns)
             column_rect.pages = pages
             column_rect.page_index = card_page_index
 
-            local is_target = self.moving_card ~= nil and column ~= moving_column
+            local is_target = self.moving_card ~= nil and source_column ~= moving_column
             local ink = is_target and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK
             local paper = is_target and Blitbuffer.COLOR_BLACK or Blitbuffer.COLOR_WHITE
             local badge = FrameContainer:new{
@@ -889,15 +889,18 @@ function BoardView:revealCard(column_id, index)
     if not column_index then
         return
     end
-    self:revealColumn(column_index)
     if self.label_filter then
         local column = self:findColumn(column_id)
         local target = column.cards[index]
-        index = 1
+        local filtered_index
         for position, id in ipairs(Model.filteredCards(self:getBoard(), column, self.label_filter)) do
-            if id == target then index = position; break end
+            if id == target then filtered_index = position; break end
         end
+        -- A hidden card must not disturb the current column or card page.
+        if not filtered_index then return end
+        index = filtered_index
     end
+    self:revealColumn(column_index)
     self.card_start[column_id] = index
 end
 

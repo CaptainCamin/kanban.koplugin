@@ -94,3 +94,15 @@ Run the test suite from the repository root with:
 ```sh
 busted
 ```
+
+With a Kanban board open in an English-language KOReader test instance and
+HTTP inspector enabled, run the real-widget labels integration checks with:
+
+```sh
+curl 'http://127.0.0.1:8080/koreader/globals/dofile/%22/workspace/kanban.koplugin/.agents/test-labels.lua%22'
+```
+
+Adjust the script path for your checkout. The script temporarily replaces the
+open board with test data and restores the original state when it finishes.
+It covers label dialogs, editor save/cancel, filtering, paging, drag destination
+styling, persistence, Markdown, deletion, and undo.
