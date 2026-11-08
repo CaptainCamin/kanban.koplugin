@@ -71,9 +71,23 @@ local function is_blank(line)
     return line:match("^%s*$") ~= nil
 end
 
+-- Hex keeps arbitrary label names safe inside Markdown comments.
+local function encode_label(name)
+    return (name:gsub(".", function(c) return string.format("%02x", c:byte()) end))
+end
+
+local function decode_label(value)
+    if #value % 2 ~= 0 or value:find("[^0-9a-f]") then return nil end
+    return (value:gsub("..", function(pair) return string.char(tonumber(pair, 16)) end))
+end
+
 local function append_card(lines, board, card_id)
     local card = board.cards[card_id]
     lines[#lines + 1] = "- " .. escape_inline(card.title)
+    for _, id in ipairs(card.labels or {}) do
+        local label = Model.findLabel(board, id)
+        if label then lines[#lines + 1] = "  <!-- kanban-label:" .. encode_label(label.name) .. " -->" end
+    end
     if card.notes and card.notes ~= "" then
         lines[#lines + 1] = NOTES_START
         for _, note_line in ipairs(split_lines(card.notes)) do
@@ -93,6 +107,9 @@ end
 
 function Markdown.export(board)
     local lines = { "# " .. escape_inline(board.name) }
+    for _, label in ipairs(board.labels or {}) do
+        lines[#lines + 1] = "<!-- kanban-label:" .. encode_label(label.name) .. " -->"
+    end
     for _, column in ipairs(board.columns) do
         lines[#lines + 1] = ""
         lines[#lines + 1] = "## " .. escape_inline(column.name)
@@ -153,6 +170,7 @@ local function parse_document(text)
     end
     local parsed = {
         name = unescape_inline(encoded_name),
+        labels = {},
         columns = {},
         archived = {},
     }
@@ -166,6 +184,11 @@ local function parse_document(text)
     while index <= last do
         local line = lines[index]
         if is_blank(line) then
+            index = index + 1
+        elseif line:match("^<!%-%- kanban%-label:([0-9a-f]+) %-%->$") then
+            local name = decode_label(line:match("kanban%-label:([0-9a-f]+)"))
+            if not name or is_blank(name) then return nil, "Invalid label name" end
+            parsed.labels[#parsed.labels + 1] = name
             index = index + 1
         elseif line == ARCHIVE_HEADING then
             if archive_seen then
@@ -202,10 +225,16 @@ local function parse_document(text)
                 if is_blank(title) then
                     return nil, "Card title is required"
                 end
-                local card = { title = title, notes = "", checklist = {} }
+                local card = { title = title, notes = "", checklist = {}, labels = {} }
                 index = index + 1
 
                 while index <= last and is_blank(lines[index]) do
+                    index = index + 1
+                end
+                while lines[index] and lines[index]:match("^  <!%-%- kanban%-label:([0-9a-f]+) %-%->$") do
+                    local name = decode_label(lines[index]:match("kanban%-label:([0-9a-f]+)"))
+                    if not name or is_blank(name) then return nil, "Invalid label name" end
+                    card.labels[#card.labels + 1] = name
                     index = index + 1
                 end
                 if lines[index] == NOTES_START then
@@ -284,6 +313,19 @@ local function add_card(board, column_id, source, clock)
         end
     end
     local card_id = column.cards[#column.cards]
+    local ids = {}
+    for _, name in ipairs(source.labels or {}) do
+        local label_id
+        for _, label in ipairs(board.labels) do
+            if label.name:lower() == name:lower() then label_id = label.id end
+        end
+        if not label_id then
+            Model.addLabel(board, name)
+            label_id = board.labels[#board.labels].id
+        end
+        ids[#ids + 1] = label_id
+    end
+    Model.setCardLabels(board, card_id, ids, clock)
     for item_index, item in ipairs(source.checklist) do
         ok, err = Model.addChecklistItem(board, card_id, item.text, nil, clock)
         if not ok then
@@ -326,6 +368,9 @@ function Markdown.import(text, state, clock)
         end
     end
 
+    for _, name in ipairs(parsed.labels) do
+        Model.addLabel(board, name)
+    end
     while #board.columns > 0 do
         local ok
         ok, err = checked(Model.deleteColumn(board, board.columns[#board.columns].id))

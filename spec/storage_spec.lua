@@ -107,6 +107,10 @@ local function expected_v2_state()
     expected.boards[2].columns[1].collapsed = false
     expected.boards[2].cards.k7.checklist = {}
     expected.boards[2].cards.k7.moved = 1731000000
+    for _, board in ipairs(expected.boards) do
+        board.labels = {}
+        for _, card in pairs(board.cards) do card.labels = {} end
+    end
     return expected
 end
 
@@ -141,6 +145,8 @@ describe("kanban storage", function()
         assert.is_true(Model.addCard(board, board.columns[1].id, { title = "Saved card" }, nil, 100))
         assert.is_true(Model.addChecklistItem(board, "k4", "Check persistence", nil, 110))
         assert.is_true(Model.setColumnCollapsed(board, board.columns[2].id, true))
+        assert.is_true(Model.addLabel(board, "Ready"))
+        assert.is_true(Model.setCardLabels(board, "k4", {board.labels[1].id}))
         local expected = clone(state)
         Storage.save(state)
         assert.is_true(saved.flushed)
