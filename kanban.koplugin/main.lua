@@ -5,6 +5,7 @@ local Dispatcher = require("dispatcher")
 local InfoMessage = require("ui/widget/infomessage")
 local SleepScreen = require("sleepscreen")
 local Storage = require("storage")
+local Model = require("model")
 local TodayView = require("todayview")
 local UIManager = require("ui/uimanager")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
@@ -51,12 +52,37 @@ end
 
 -- Open the board view, from the Tools menu entry or the Dispatcher action.
 -- A full refresh clears the File Manager or page underneath from the e-ink screen.
-function Kanban:onKanbanOpen()
-    UIManager:show(BoardView:new{
-        state = Storage.load(),
+function Kanban:onKanbanOpen(board_id, on_close)
+    local state = Storage.load()
+    if board_id and not Model.selectBoard(state, board_id) then
+        UIManager:show(InfoMessage:new{ text = _("This board no longer exists."), timeout = 2 })
+        return true
+    end
+    -- Selecting a Bookshelf card must not change the last-opened board until tapped.
+    if board_id then Storage.save(state) end
+    local view = BoardView:new{
+        state = state,
         ui = self.ui,
-    }, "full")
+    }
+    if on_close then
+        local original = view.onCloseWidget
+        view.onCloseWidget = function(widget)
+            if original then original(widget) end
+            on_close()
+        end
+    end
+    UIManager:show(view, "full")
     return true
+end
+
+-- Public bridge for our optional Bookshelf module. Keep plugin-local requires
+-- here: Bookshelf's module loader uses a different Lua search path.
+function Kanban:getBookshelfState()
+    return Storage.load()
+end
+
+function Kanban:getBookshelfTodayColumn(board)
+    return Model.getTodayColumn(board)
 end
 
 -- Add a card to the first column of the current board without opening the board.

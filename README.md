@@ -10,6 +10,11 @@ boards, columns, and cards. Cards are not linked to books.
   detail view with scrollable notes and a checklist; tap items to toggle them, or
   add, edit and delete items. Its **Actions** button opens Edit, move/reorder and
   Archive actions.
+- Create, rename, and delete board labels from **☰ → Labels…**. Assign multiple
+  labels with **Labels…** in the new/edit card dialog. Labels appear as text badges
+  on cards and in the detail view. Use **☰ → Filter by label…** to show matching
+  cards, or **All cards** to clear the filter. Filters reset when switching boards.
+  Labels are saved locally and included in Markdown exports and imports.
 - Hold a card and slide it: a bar shows where it will land, and sliding onto a
   column tab moves it to that column. Or hold, lift, then tap a gap between
   cards, a column header or a tab. Lift where you picked it up to cancel. Turn
@@ -51,6 +56,20 @@ boards, columns, and cards. Cards are not linked to books.
   accelerometer, **Rotate screen** in the board menu (☰) switches between
   portrait and landscape. Swipe to navigate column pages
   and card pages; the page-turn keys move between column pages.
+
+## Bookshelf module
+
+With [Bookshelf](https://github.com/AndyHazz/bookshelf.koplugin) 6.1 or newer
+enabled, Kanban also provides a **Kanban board** micro-module. Add it through
+Bookshelf's module picker and choose a board. Each instance remembers its own
+board, so you can add several cards for different boards.
+
+The module shows the board name, its pinned **Now** card, and up to three tasks
+from its in-progress column (the same column used by **Today**). Tap to open
+that board. Use **Module settings…** from the card's long-press menu to choose
+another board. If a chosen board is deleted, tap the card to choose again.
+Closing a board refreshes the module. Everything works offline; Bookshelf is
+optional and the module is included in the normal plugin zip.
 
 ## Screenshots
 
@@ -104,3 +123,21 @@ archive/undo, Markdown round-trip and sleep-screen resume, failing on KOReader
 errors or missing UI states. Artifacts (screenshots/logs) go to
 `.agents/artifacts/smoke`. Physical e-ink checks such as ghosting, tap-target size
 and real-device responsiveness remain manual.
+With a Kanban board open in an English-language KOReader test instance and
+HTTP inspector enabled, run the real-widget labels integration checks with:
+
+```sh
+curl 'http://127.0.0.1:8080/koreader/globals/dofile/%22/workspace/kanban.koplugin/.agents/test-labels.lua%22'
+```
+
+Adjust the script path for your checkout. The script temporarily replaces the
+open board with test data and restores the original state when it finishes.
+It covers label dialogs, editor save/cancel, filtering, paging, drag destination
+styling, persistence, Markdown, deletion, and undo.
+
+The standalone Bookshelf module interaction checks run without KOReader or
+Bookshelf installed:
+
+```sh
+luajit spec/bookshelf_module_test.lua
+```
