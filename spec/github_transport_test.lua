@@ -34,6 +34,7 @@ assert(request('POST','/repos/owner/repo/issues',{title='Example'}).number==1)
 assert(last_request.url=='https://api.github.com/repos/owner/repo/issues')
 assert(last_request.headers.authorization=='Bearer FAKE_TOKEN')
 assert(last_request.redirect==false and tls_options.verify=='peer' and tls_options.cafile)
+assert(last_request.scheme=='http' and last_request.port==443 and last_request.create)
 assert(last_request.headers['content-length']==#'encoded-json')
 assert(resets==1)
 for _,code in ipairs({401,403,404,422,429,500,301}) do

@@ -114,6 +114,23 @@ describe('GitHub batch publishing', function()
         assert.equals(0,#GitHub.candidates(board,journal))
     end)
 
+    it('recovers accepted uploads even when the device clock is far ahead', function()
+        local _, board = fixture()
+        local journal = {}
+        local candidate = GitHub.candidates(board, journal)[1]
+        GitHub.publish(candidate, journal, function() end,
+            function() return nil, 'timeout' end, function() return 4102444800 end)
+        local recovered = assert(GitHub.publish(candidate, journal, function() end, function(method, path)
+            assert.equals('GET', method)
+            assert.is_nil(path:find('since=', 1, true))
+            local existing = issue(88)
+            existing.body = candidate.body
+            existing.created_at = '2026-11-08T10:00:00Z'
+            return {existing}
+        end))
+        assert.equals(88, recovered.number)
+    end)
+
     it('keeps uncertain attempts pending when no matching issue can be found', function()
         local _, board = fixture()
         local journal={}

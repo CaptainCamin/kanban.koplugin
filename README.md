@@ -191,3 +191,14 @@ Run the standalone HTTP transport checks with:
 ```sh
 luajit spec/github_transport_test.lua
 ```
+
+To exercise KOReader's actual bundled HTTP and TLS libraries against local test
+servers (including certificate trust, hostname verification, redirects, and
+older HTTP parsers), pass the extracted runtime directory:
+
+```sh
+python3 .agents/test-github-tls.py /path/to/koreader/usr/lib/koreader
+```
+
+This requires `openssl` and Python. It uses temporary certificates, fake tokens,
+and loopback servers; it never contacts GitHub.

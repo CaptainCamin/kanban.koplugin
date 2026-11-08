@@ -87,8 +87,7 @@ end
 local function recover(candidate, record, request)
     for page = 1, 5 do
         local issues, err = request('GET', '/repos/' .. candidate.repository
-            .. '/issues?state=all&sort=created&direction=desc&per_page=100&page=' .. page
-            .. '&since=' .. os.date('!%Y-%m-%dT%H:%M:%SZ', record.started - 60))
+            .. '/issues?state=all&sort=created&direction=desc&per_page=100&page=' .. page)
         if not issues then return nil, err end
         if type(issues) ~= 'table' then return nil, 'Invalid GitHub issue list.' end
         for _, issue in ipairs(issues) do

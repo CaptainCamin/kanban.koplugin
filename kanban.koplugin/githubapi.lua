@@ -40,7 +40,10 @@ function Api.client(token)
         end
         socketutil:set_timeout(5, 10)
         local ok, result, status = pcall(http.request, {
-            url='https://api.github.com' .. path, method=method, redirect=false, create=create,
+            url='https://api.github.com' .. path,
+            -- Older LuaSocket accepts only HTTP in its URL parser. The explicit
+            -- connector always performs verified TLS before any HTTP bytes.
+            scheme='http', port=443, method=method, redirect=false, create=create,
             headers={
                 ['authorization']='Bearer ' .. token,
                 ['accept']='application/vnd.github+json', ['x-github-api-version']='2022-11-28',
