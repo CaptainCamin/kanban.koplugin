@@ -89,3 +89,18 @@ Run the test suite from the repository root with:
 ```sh
 busted
 ```
+
+For a repeatable emulator smoke pass before device testing, run:
+
+```sh
+.agents/smoke                              # emulator build, all checks
+.agents/smoke --build desktop --skip-sleep  # desktop build, no F2 sleep check
+.agents/smoke --only board-tools,gestures --keep
+```
+
+It uses `.agents/setup`, Xvfb, an isolated KO_HOME, httpinspector and X11 input to
+exercise board open, gestures/Today, card checklist, drag/edge paging, bulk
+archive/undo, Markdown round-trip and sleep-screen resume, failing on KOReader
+errors or missing UI states. Artifacts (screenshots/logs) go to
+`.agents/artifacts/smoke`. Physical e-ink checks such as ghosting, tap-target size
+and real-device responsiveness remain manual.
