@@ -151,7 +151,12 @@ function Model.restoreBoard(state, snapshot)
     if not index then
         return nil, "board not found"
     end
-    state.boards[index] = copy_table(snapshot)
+    local current = state.boards[index]
+    local restored = copy_table(snapshot)
+    -- External upload identities cannot be undone or reused by a later card.
+    restored.github_id = current.github_id or restored.github_id
+    restored.next_id = math.max(current.next_id, restored.next_id)
+    state.boards[index] = restored
     return true
 end
 

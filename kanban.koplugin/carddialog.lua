@@ -854,6 +854,9 @@ function CardDialog.showBoardMenu(view)
         title = board.name,
         use_info_style = false,
         buttons = {
+            { {text = _("GitHub issues…"), callback = action(function()
+                require("githubdialog").show(view)
+            end)} },
             { {
                 text = _("Labels…"),
                 callback = action(function() CardDialog.showLabels(view) end),

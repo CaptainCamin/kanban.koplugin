@@ -15,6 +15,9 @@ boards, columns, and cards. Cards are not linked to books.
   on cards and in the detail view. Use **☰ → Filter by label…** to show matching
   cards, or **All cards** to clear the filter. Filters reset when switching boards.
   Labels are saved locally and included in Markdown exports and imports.
+- Connect a board to GitHub from **☰ → GitHub issues…**. Choose which labels
+  upload, preview matching cards, and publish them as a batch of GitHub issues.
+  Published cards retain their issue links and are excluded from later batches.
 - Hold a card and slide it: a bar shows where it will land, and sliding onto a
   column tab moves it to that column. Or hold, lift, then tap a gap between
   cards, a column header or a tab. Lift where you picked it up to cancel. Turn
@@ -96,6 +99,39 @@ Board data is stored in `kanban.lua` in KOReader's settings directory, returned
 by `DataStorage:getSettingsDir()` (for example, `koreader/settings/kanban.lua`).
 If the data file is corrupt, the plugin keeps a backup as `kanban.lua.bak`.
 
+## GitHub issue uploads
+
+1. Open **☰ → GitHub issues…** and enter a repository as `owner/repository`.
+2. Open **Labels to upload** and check any labels you want, such as **Bug** and
+   **Feature**. A card with any checked label is eligible. A card with both creates
+   one issue, with both labels. Unchecked labels stay local.
+3. In **GitHub label mappings…**, map those board labels to existing GitHub label
+   names, such as `Bug → bug` and `Feature → enhancement`. Enabling a label starts
+   with its current board name; clear a mapping to upload without that issue label.
+4. Set a GitHub fine-grained personal access token for that repository with
+   **Issues: read and write** permission. Enter the token on the device.
+5. Open **Preview batch…** while offline or online. Tap a card to review its issue
+   contents. **Publish batch → Publish** connects and uploads the batch. Archived
+   cards and cards already published to that repository are excluded.
+
+Titles become issue titles; notes and checklists become the issue body. Issue
+links appear in card details. This version creates issues on github.com; it does
+not synchronize later edits or GitHub status back to the board. Changing a label
+name does not change its configured GitHub mapping.
+
+Each success is recorded before the next card starts. The batch stops on an error;
+retry from a new preview to continue with remaining cards. If a request was
+interrupted after GitHub may have accepted it, retry checks recent issues for a
+hidden card marker. If the result remains uncertain, the plugin leaves it pending
+rather than automatically creating a second issue. Keep that marker in the GitHub
+issue body until recovery is complete.
+
+The token and upload journal are stored locally, unencrypted, in
+`kanban-github.lua` in KOReader's settings directory. Keep that file with your
+board backups; undo and Markdown exports do not contain it. **Forget GitHub token**
+removes the saved token while preserving issue history. Markdown imports create
+new boards and do not restore GitHub connections or published issue links.
+
 ## Known issues
 
 - Keyboard-only navigation is not supported. The board handles Back and the
@@ -141,3 +177,28 @@ Bookshelf installed:
 ```sh
 luajit spec/bookshelf_module_test.lua
 ```
+
+The GitHub widget checks use simulated responses and never create real issues.
+The settings checks use a temporary directory and fake tokens:
+
+```sh
+curl 'http://127.0.0.1:8080/koreader/globals/dofile/%22/workspace/kanban.koplugin/.agents/test-github.lua%22'
+curl 'http://127.0.0.1:8080/koreader/globals/dofile/%22/workspace/kanban.koplugin/.agents/test-github-store.lua%22'
+```
+
+Run the standalone HTTP transport checks with:
+
+```sh
+luajit spec/github_transport_test.lua
+```
+
+To exercise KOReader's actual bundled HTTP and TLS libraries against local test
+servers (including certificate trust, hostname verification, redirects, and
+older HTTP parsers), pass the extracted runtime directory:
+
+```sh
+python3 .agents/test-github-tls.py /path/to/koreader/usr/lib/koreader
+```
+
+This requires `openssl` and Python. It uses temporary certificates, fake tokens,
+and loopback servers; it never contacts GitHub.

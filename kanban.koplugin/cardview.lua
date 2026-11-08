@@ -121,6 +121,13 @@ function CardView:layout()
         face = Font:getFace("infofont", 24),
         bold = true,
     })
+    local issue = require("githubdialog").issue(self.board_view:getBoard(), card.id)
+    if issue then
+        table.insert(content, TextBoxWidget:new{
+            text = "GitHub #" .. issue.number .. "\n" .. issue.url,
+            width = content_width, face = Font:getFace("smallinfofont"),
+        })
+    end
     local labels = Model.labelText(self.board_view:getBoard(), card)
     if labels ~= "" then
         table.insert(content, TextBoxWidget:new{
