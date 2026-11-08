@@ -9,6 +9,8 @@ command -v curl >/dev/null 2>&1 || missing_packages+=(curl)
 command -v jq >/dev/null 2>&1 || missing_packages+=(jq)
 command -v xdotool >/dev/null 2>&1 || missing_packages+=(xdotool)
 command -v import >/dev/null 2>&1 || missing_packages+=(imagemagick)
+command -v xdpyinfo >/dev/null 2>&1 || missing_packages+=(x11-utils)
+command -v Xvfb >/dev/null 2>&1 || missing_packages+=(xvfb)
 command -v wlr-randr >/dev/null 2>&1 || missing_packages+=(wlr-randr)
 
 if ((${#missing_packages[@]})); then
