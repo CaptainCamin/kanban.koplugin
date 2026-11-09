@@ -72,47 +72,107 @@ return {
     on_add = function(ctx, done) chooseBoard(ctx, done) end,
     show_settings = function(ctx) chooseBoard(ctx) end,
     render = function(ctx)
-        local lines = {}
+        local VerticalGroup = require("ui/widget/verticalgroup")
+        local VerticalSpan = require("ui/widget/verticalspan")
+        local LineWidget = require("ui/widget/linewidget")
+        local Geom = require("ui/geometry")
+        local sc = Kit.sc(ctx.scale)
+        local width = math.max(1, ctx.width)
+        local remaining = ctx.max_height and ctx.max_height > 0 and ctx.max_height or nil
+        local group = VerticalGroup:new{ align = "left" }
+
+        -- Report natural height to Bookshelf's size fitter, but give each
+        -- section only the space left in the card. Long titles cannot push
+        -- later widgets beyond the host's clipping boundary.
+        local function space(n)
+            local h = sc(n)
+            if remaining then h = math.min(h, math.max(0, remaining)) end
+            if h <= 0 then return end
+            group[#group + 1] = VerticalSpan:new{ width = h }
+            if remaining then remaining = remaining - h end
+        end
+        local function text(value, size, muted, bold, lines)
+            if remaining and remaining <= 0 then return end
+            local cap = lines and sc(size * 1.5 * lines) or nil
+            if remaining then cap = math.min(cap or remaining, remaining) end
+            local widget = Kit.fitText{
+                text = value, size = size, opts = { bold = bold or false },
+                scale_pct = ctx.scale, width = width, max_h = cap,
+                fgcolor = muted and Kit.COLOR_MUTED or Kit.COLOR_PRIMARY,
+                bgcolor = Kit.CARD_BG,
+            }
+            local height = widget:getSize().h
+            -- TextBoxWidget keeps at least one full line, even when its
+            -- requested cap is smaller. Omit a row that cannot fit.
+            if remaining and height > remaining then
+                widget:free()
+                return
+            end
+            group[#group + 1] = widget
+            if remaining then remaining = remaining - height end
+        end
+        local function heading(name)
+            text(name, 20, false, true, 1)
+            space(5)
+            if not remaining or remaining >= sc(1) then
+                group[#group + 1] = LineWidget:new{
+                    dimen = Geom:new{ w = width, h = sc(1) },
+                    background = Kit.COLOR_MUTED,
+                }
+                if remaining then remaining = remaining - sc(1) end
+            end
+            space(7)
+        end
+
+        local owner, board
+        if not ctx.preview then
+            owner = plugin()
+            board = owner and selected(ctx, stateFor(owner))
+        end
+        if not ctx.preview and not board then
+            heading(_("Kanban board"))
+            text(owner and _("Tap to choose a board.")
+                or _("Enable Kanban and use Bookshelf 6.1 or newer."), 14, true)
+            return group
+        end
+
+        heading(ctx.preview and _("Kanban board") or board.name)
+        local pinned = not ctx.preview and board.now_card and board.cards[board.now_card]
+        if ctx.preview or (pinned and not pinned.archived) then
+            text(_("Now"), 12, true, true, 1)
+            space(2)
+            text(ctx.preview and _("Your pinned card") or pinned.title, 18, false, true, 2)
+            space(9)
+        end
+        local column = not ctx.preview and owner:getBookshelfTodayColumn(board)
         if ctx.preview then
-            lines = { _("Kanban board"), _("Now: Your pinned card"),
-                _("Choose a board to show its in-progress tasks.") }
-        else
-            local owner = plugin()
-            local board = owner and selected(ctx, stateFor(owner))
-            if not owner then
-                lines = { _("Kanban board"), _("Enable Kanban and use Bookshelf 6.1 or newer.") }
-            elseif not board then
-                lines = { _("Kanban board"), _("Tap to choose a board.") }
+            text(_("In progress"), 12, true, true, 1)
+            space(3)
+            text(_("Choose a board to show its tasks."), 14, true)
+        elseif column then
+            local tasks = {}
+            for _, id in ipairs(column.cards) do
+                local card = board.cards[id]
+                if card and not card.archived then tasks[#tasks + 1] = card end
+            end
+            text(column.name .. " · " .. #tasks, 12, true, true, 1)
+            space(4)
+            if #tasks == 0 then
+                text(_("No cards in this column."), 14, true)
             else
-                lines[#lines + 1] = board.name
-                local pinned = board.now_card and board.cards[board.now_card]
-                if pinned and not pinned.archived then
-                    lines[#lines + 1] = _("Now:") .. " " .. pinned.title
+                for i = 1, math.min(3, #tasks) do
+                    text("•  " .. tasks[i].title, 15, false, false, 1)
+                    if i < math.min(3, #tasks) then space(3) end
                 end
-                local column = owner:getBookshelfTodayColumn(board)
-                if column then
-                    lines[#lines + 1] = column.name .. " (" .. #column.cards .. ")"
-                    for i = 1, math.min(3, #column.cards) do
-                        local card = board.cards[column.cards[i]]
-                        if card then lines[#lines + 1] = "• " .. card.title end
-                    end
-                    if #column.cards == 0 then
-                        lines[#lines + 1] = _("No cards in this column.")
-                    elseif #column.cards > 3 then
-                        lines[#lines + 1] = "…"
-                    end
-                else
-                    lines[#lines + 1] = _("No in-progress column.")
+                if #tasks > 3 then
+                    space(4)
+                    text("+" .. (#tasks - 3) .. " " .. _("more"), 12, true, false, 1)
                 end
             end
+        else
+            text(_("No in-progress column."), 14, true)
         end
-        return Kit.fitText{
-            text = table.concat(lines, "\n"), size = 18,
-            scale_pct = ctx.scale, width = math.max(1, ctx.width),
-            -- A natural height lets Bookshelf shrink the text to fit the card.
-            max_h = ctx.max_height, fgcolor = Kit.COLOR_PRIMARY,
-            bgcolor = Kit.CARD_BG,
-        }
+        return group
     end,
     on_tap = function(ctx)
         local owner = plugin()
