@@ -1,5 +1,5 @@
 local Blitbuffer = require("ffi/blitbuffer")
-local Button = require("ui/widget/button")
+local T = require("ffi/util").template
 local CardDialog = require("carddialog")
 local Device = require("device")
 local Font = require("ui/font")
@@ -13,6 +13,8 @@ local InputContainer = require("ui/widget/container/inputcontainer")
 local Model = require("model")
 local ScrollableContainer = require("ui/widget/container/scrollablecontainer")
 local Size = require("ui/size")
+local Style = require("kanbanstyle")
+local LineWidget = require("ui/widget/linewidget")
 local TextBoxWidget = require("ui/widget/textboxwidget")
 local TextWidget = require("ui/widget/textwidget")
 local TitleBar = require("ui/widget/titlebar")
@@ -67,10 +69,10 @@ function CardView:layout()
     self.covers_fullscreen = true
     self.title_bar = TitleBar:new{
         width = self.dimen.w,
-        title = card.title,
+        title = self.board_view:getBoard().name,
         title_face = Font:getFace("smallinfofontbold"),
         with_bottom_line = true,
-        bottom_line_color = Blitbuffer.COLOR_DARK_GRAY,
+        bottom_line_color = Blitbuffer.COLOR_BLACK,
         bottom_line_h_padding = Size.padding.large,
         close_callback = function() self:onClose() end,
         show_parent = self,
@@ -78,47 +80,52 @@ function CardView:layout()
 
     local outer_padding = Size.padding.large
     local control_gap = Size.padding.small
-    local control_width = math.floor((self.dimen.w - 2 * outer_padding - control_gap) / 2)
+    local control_width = math.floor((self.dimen.w - 2 * outer_padding - 2 * control_gap) / 3)
+    local control_row = HorizontalGroup:new{ align = "center" }
+    local column = self.board_view:locateCard(self.card_id)
+    for index, action in ipairs({
+        { text = _("Edit"), callback = function()
+            CardDialog.editCard(self.board_view, column.id, self.card_id)
+        end },
+        { text = _("Move to…"), callback = function()
+            CardDialog.moveCardTo(self.board_view, self.card_id)
+        end },
+        { text = _("More…"), callback = function()
+            CardDialog.showCardActions(self.board_view, self.card_id)
+        end },
+    }) do
+        if index > 1 then
+            table.insert(control_row, HorizontalSpan:new{ width = control_gap })
+        end
+        table.insert(control_row, Style.button{
+            text = action.text, callback = action.callback, width = control_width,
+            text_font_face = "cfont", text_font_size = 18,
+            bordersize = Style.border, radius = Style.radius,
+            background = index == 1 and Style.surface or Blitbuffer.COLOR_WHITE,
+            show_parent = self,
+        })
+    end
     local controls = FrameContainer:new{
         bordersize = 0,
-        padding_top = Size.padding.small,
-        padding_bottom = Size.padding.small,
-        padding_left = outer_padding,
-        padding_right = outer_padding,
-        background = Blitbuffer.COLOR_WHITE,
-        HorizontalGroup:new{
-            align = "center",
-            Button:new{
-                text = _("Actions"),
-                width = control_width,
-                text_font_face = "smallinfofont",
-                text_font_size = 22,
-                text_font_bold = true,
-                show_parent = self,
-                callback = function()
-                    CardDialog.showCardActions(self.board_view, self.card_id)
-                end,
-            },
-            HorizontalSpan:new{ width = control_gap },
-            Button:new{
-                text = _("Add checklist item"),
-                width = control_width,
-                text_font_face = "smallinfofont",
-                text_font_size = 22,
-                text_font_bold = true,
-                show_parent = self,
-                callback = function() self:promptChecklistItem() end,
-            },
-        },
+        padding_top = Size.padding.small, padding_bottom = Size.padding.small,
+        padding_left = outer_padding, padding_right = outer_padding,
+        background = Blitbuffer.COLOR_WHITE, control_row,
     }
 
     local scroll_gutter = ScrollableContainer:getScrollbarWidth()
     local content_width = math.max(1, self.dimen.w - scroll_gutter - 2 * outer_padding)
     local content = VerticalGroup:new{ align = "left" }
     table.insert(content, TextBoxWidget:new{
+        text = column and column.name or "",
+        width = content_width,
+        face = Font:getFace("smallinfofont"),
+        fgcolor = Blitbuffer.COLOR_BLACK,
+    })
+    addSpace(content, Size.padding.small)
+    table.insert(content, TextBoxWidget:new{
         text = card.title,
         width = content_width,
-        face = Font:getFace("infofont", 24),
+        face = Font:getFace("cfont", 28),
         bold = true,
     })
     local issue = require("githubdialog").issue(self.board_view:getBoard(), card.id)
@@ -135,54 +142,66 @@ function CardView:layout()
         })
     end
     addSpace(content, Size.padding.large)
+    table.insert(content, LineWidget:new{
+        dimen = Geom:new{w=content_width,h=Style.border}, background = Style.rule,
+    })
+    addSpace(content, Size.padding.large)
     table.insert(content, TextWidget:new{
         text = _("Notes"),
-        face = Font:getFace("smallinfofontbold"),
+        face = Font:getFace("cfont", 18),
+        bold = true,
     })
     addSpace(content, Size.padding.small)
     if hasText(card.notes) then
         table.insert(content, TextBoxWidget:new{
             text = card.notes,
             width = content_width,
-            face = Font:getFace("infofont"),
+            face = Font:getFace("cfont", 20),
         })
     else
         table.insert(content, TextWidget:new{
             text = _("No notes."),
             face = Font:getFace("smallinfofont"),
-            fgcolor = Blitbuffer.COLOR_DARK_GRAY,
+            fgcolor = Blitbuffer.COLOR_BLACK,
         })
     end
 
     addSpace(content, Size.padding.large)
+    local checklist = card.checklist or {}
+    local completed = 0
+    for _, item in ipairs(checklist) do
+        if item.done then completed = completed + 1 end
+    end
     table.insert(content, TextWidget:new{
-        text = _("Checklist"),
-        face = Font:getFace("smallinfofontbold"),
+        text = #checklist > 0 and T(_("Checklist · %1 of %2 done"), completed, #checklist) or _("Checklist"),
+        face = Font:getFace("cfont", 18),
+        bold = true,
     })
     addSpace(content, Size.padding.small)
-    local checklist = card.checklist or {}
+    self.checklist_targets = {}
     if #checklist == 0 then
         table.insert(content, TextWidget:new{
             text = _("No checklist items."),
             face = Font:getFace("smallinfofont"),
-            fgcolor = Blitbuffer.COLOR_DARK_GRAY,
+            fgcolor = Blitbuffer.COLOR_BLACK,
         })
     else
         local item_gap = Size.padding.small
-        local edit_width = Screen:scaleBySize(72)
-        local delete_width = Screen:scaleBySize(82)
-        local toggle_width = math.max(1, content_width - edit_width - delete_width - 2 * item_gap)
+        local more_width = Screen:scaleBySize(52)
+        local toggle_width = math.max(1, content_width - more_width - item_gap)
         for index, item in ipairs(checklist) do
             local item_index = index
             local row = HorizontalGroup:new{
                 align = "top",
-                Button:new{
+                Style.button{
                     text = (item.done and "☑ " or "☐ ") .. item.text,
                     width = toggle_width,
-                    height = Screen:scaleBySize(44),
+                    height = Screen:scaleBySize(64),
+                    bordersize = 0,
+                    padding_h = Size.padding.small,
                     align = "left",
                     text_font_face = "smallinfofont",
-                    text_font_size = 22,
+                    text_font_size = 20,
                     text_font_bold = false,
                     show_parent = self,
                     callback = function()
@@ -192,34 +211,31 @@ function CardView:layout()
                     end,
                 },
                 HorizontalSpan:new{ width = item_gap },
-                Button:new{
-                    text = _("Edit"),
-                    width = edit_width,
-                    height = Screen:scaleBySize(44),
-                    text_font_face = "smallinfofont",
-                    text_font_size = 18,
+                Style.button{
+                    text = _("…"), width = more_width,
+                    height = Screen:scaleBySize(64),
+                    bordersize = 0,
+                    text_font_size = 20,
                     show_parent = self,
-                    callback = function() self:promptChecklistItem(item_index) end,
-                },
-                HorizontalSpan:new{ width = item_gap },
-                Button:new{
-                    text = _("Delete"),
-                    width = delete_width,
-                    height = Screen:scaleBySize(44),
-                    text_font_face = "smallinfofont",
-                    text_font_size = 18,
-                    show_parent = self,
-                    callback = function()
-                        self:changeChecklist(function(board)
-                            return Model.deleteChecklistItem(board, self.card_id, item_index)
-                        end)
-                    end,
+                    callback = function() self:showChecklistActions(item_index) end,
                 },
             }
+            table.insert(self.checklist_targets, row[1])
             table.insert(content, row)
+            table.insert(content, LineWidget:new{
+                dimen = Geom:new{w=content_width,h=Style.border}, background = Style.rule,
+            })
             addSpace(content, Size.padding.small)
         end
     end
+    addSpace(content, Size.padding.small)
+    self.checklist_add_button = Style.button{
+        text = _("+ Add checklist item"), width = content_width,
+        text_font_face = "cfont", text_font_size = 18,
+        bordersize = Style.border, background = Style.surface, radius = Style.radius,
+        show_parent = self, callback = function() self:promptChecklistItem() end,
+    }
+    table.insert(content, self.checklist_add_button)
     addSpace(content, outer_padding)
 
     local body_y = self.title_bar:getSize().h + controls:getSize().h
@@ -253,6 +269,28 @@ function CardView:layout()
             self.cropping_widget,
         },
     }
+end
+
+function CardView:showChecklistActions(item_index)
+    local item = self:getCard().checklist[item_index]
+    local dialog
+    dialog = Style.dialog{
+        title = item.text,
+        buttons = {
+            { { text = _("Edit"), callback = function()
+                UIManager:close(dialog)
+                self:promptChecklistItem(item_index)
+            end } },
+            { { text = _("Delete"), callback = function()
+                UIManager:close(dialog)
+                self.board_view:commit(function()
+                    return Model.deleteChecklistItem(self.board_view:getBoard(), self.card_id, item_index)
+                end, nil, nil, _("Checklist item deleted"))
+            end } },
+            { { text = _("Cancel"), callback = function() UIManager:close(dialog) end } },
+        },
+    }
+    UIManager:show(dialog)
 end
 
 function CardView:changeChecklist(change)

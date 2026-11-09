@@ -5,23 +5,35 @@ boards, columns, and cards. Cards are not linked to books.
 
 ## Features
 
+The interface uses a shared monochrome style: fine black card borders, outlined badges and
+controls, consistent typography, and checklist rows separated by black rules.
+Card holds and board menus use a custom bottom action panel with contextual
+headings, a distinct primary action, descriptive tiles and quieter secondary
+actions. Long panels scroll; tap outside, × or Back to dismiss.
+
 - Organize cards into ordered columns and move or reorder columns.
-- Add and edit cards with a title and optional notes. Tap a card for a full-screen
+- Add and edit cards in one full-screen editor: title, notes, label toggles and
+  checklist. Changes stay in a draft until **Save/Add**; closing a changed draft
+  offers Discard. One Undo restores every field from the previous saved card.
+  Tap a card for a full-screen
   detail view with scrollable notes and a checklist; tap items to toggle them, or
-  add, edit and delete items. Its **Actions** button opens Edit, move/reorder and
-  Archive actions.
-- Create, rename, and delete board labels from **☰ → Labels…**. Assign multiple
-  labels with **Labels…** in the new/edit card dialog. Labels appear as text badges
+  add, edit and delete items. **Edit** and **Move to…** are available directly;
+  **More…** opens reorder, pin and Archive actions. Checklist rows give most of
+  their width to task text, with Edit and Delete under **…**. Deletion offers Undo.
+- Create, rename, and delete board labels from **☰ → Board tools… → Labels…**. Assign multiple
+  labels with inline toggles in the card editor. Labels appear as text badges
   on cards and in the detail view. Use **☰ → Filter by label…** to show matching
-  cards, or **All cards** to clear the filter. Filters reset when switching boards.
+  cards. An active label appears in a compact strip under the board title;
+  tap **× Clear** to restore all cards. Filters reset when switching boards.
   Labels are saved locally and included in Markdown exports and imports.
-- Connect a board to GitHub from **☰ → GitHub issues…**. Choose which labels
+- Connect a board to GitHub from **☰ → Import / export… → GitHub issues…**. Choose which labels
   upload, preview matching cards, and publish them as a batch of GitHub issues.
   Published cards retain their issue links and are excluded from later batches.
 - Hold a card and slide it: a bar shows where it will land, and sliding onto a
-  column tab moves it to that column. Or hold, lift, then tap a gap between
-  cards, a column header or a tab. Lift where you picked it up to cancel. Turn
-  dragging off with **Tools → Kanban board → Drag to move**.
+  column tab moves it to that column. Hold and release without sliding to open
+  card actions: advance to the next column, edit, pin, select, reorder or archive.
+  **Reorder… → Place on board…** enables tap-to-place on a gap, header or tab.
+  Release a drag over its starting card to cancel. Turn dragging off with **Tools → Kanban board → Drag to move**.
 - Undo the last change: moves, archiving, deleting a column and restoring show
   an **Undo** button for a few seconds, and the board menu (☰) always has
   **Undo: <change>**, even after a restart. The card dialog also has
@@ -29,8 +41,8 @@ boards, columns, and cards. Cards are not linked to books.
 - Choose **Select cards** in the board menu (☰), tap cards across pages, then
   **Move to…** or **Archive** the selection. One **Undo** restores the whole batch;
   **Cancel** leaves cards unchanged. Hold and drag are disabled while selecting.
-- Cards show small markers: ¶ when they have notes, ☑ done/total for a
-  checklist, and how many days they've been in their column.
+- Card previews separate title, a compact Notes/checklist/age line, and an outlined
+  label badge so task text and metadata are easy to scan.
 - Pin one card as **Now** per board; it appears in a bold bar above the columns
   and opens its detail view when tapped.
 - Collapse a column (column dialog) into a narrow strip to fit more columns on
@@ -39,7 +51,7 @@ boards, columns, and cards. Cards are not linked to books.
   cards rather than deleting them.
 - Create, switch between, rename, and delete multiple boards. Tap the board name
   (marked ▼) in the title bar to open the Boards dialog.
-- Export the current board to Markdown in a folder you choose (it remembers the
+- From **☰ → Import / export…**, export the current board to Markdown in a folder you choose (it remembers the
   last one; the first time it starts in KOReader's home folder), or import a
   Markdown file as a new board. Cards, notes, checklists, and archived cards are
   included.
@@ -55,8 +67,11 @@ boards, columns, and cards. Cards are not linked to books.
 - **Show board on sleep screen** (Tools → Kanban board) shows the current board
   as the sleep screen. Turning it off restores your previous sleep screen
   settings.
+- Every expanded column has a fixed **+ Add card** control on every page, plus
+  a compact card-range and swipe hint when paging is needed. New cards inherit the active label
+  filter so they stay visible after saving. Empty columns explain their state.
 - Board layout adapts when the screen rotates. On devices without an
-  accelerometer, **Rotate screen** in the board menu (☰) switches between
+  accelerometer, **Rotate screen** in **☰ → Board tools…** switches between
   portrait and landscape. Swipe to navigate column pages
   and card pages; the page-turn keys move between column pages.
 
@@ -84,6 +99,10 @@ optional and the module is included in the normal plugin zip.
 | --- | --- |
 | ![Card actions](docs/screenshots/card-actions.png) | ![Quick-move a card](docs/screenshots/quick-move.png) |
 
+| Unified card editor | Filtered board |
+| --- | --- |
+| ![Unified card editor](docs/screenshots/card-editor.png) | ![Filtered board](docs/screenshots/filtered-board.png) |
+
 ![Board menu](docs/screenshots/board-menu.png)
 
 ## Installation
@@ -101,7 +120,7 @@ If the data file is corrupt, the plugin keeps a backup as `kanban.lua.bak`.
 
 ## GitHub issue uploads
 
-1. Open **☰ → GitHub issues…** and enter a repository as `owner/repository`.
+1. Open **☰ → Import / export… → GitHub issues…** and enter a repository as `owner/repository`.
 2. Open **Labels to upload** and check any labels you want, such as **Bug** and
    **Feature**. A card with any checked label is eligible. A card with both creates
    one issue, with both labels. Unchecked labels stay local.
@@ -202,3 +221,21 @@ python3 .agents/test-github-tls.py /path/to/koreader/usr/lib/koreader
 
 This requires `openssl` and Python. It uses temporary certificates, fake tokens,
 and loopback servers; it never contacts GitHub.
+
+### UX widget regression checks
+
+The headless UX checks render real KOReader widgets, check portrait/landscape
+layout, paging, creation under a label filter, checklist deletion/undo, draft
+saving/cancellation, keyboard reflow, rotation and filter clearing, and run
+the existing labels integration checks. Use a fresh directory for `KO_HOME`:
+
+```sh
+mkdir -p /workspace/work/kanban-ux
+cd /path/to/koreader/usr/lib/koreader
+SDL_VIDEODRIVER=dummy KO_HOME=/workspace/work/kanban-ux ./luajit \
+  /path/to/kanban.koplugin/.agents/test-ux.lua \
+  /path/to/kanban.koplugin /workspace/work/kanban-ux
+```
+
+For landscape, also set `EMULATE_READER_W=800 EMULATE_READER_H=600`.
+Screenshots and isolated settings are written to that directory.

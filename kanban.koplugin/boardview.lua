@@ -1,6 +1,5 @@
 local BD = require("ui/bidi")
 local Blitbuffer = require("ffi/blitbuffer")
-local Button = require("ui/widget/button")
 local ButtonDialog = require("ui/widget/buttondialog")
 local CardDialog = require("carddialog")
 local CardView = require("cardview")
@@ -23,6 +22,7 @@ local OverlapGroup = require("ui/widget/overlapgroup")
 local RightContainer = require("ui/widget/container/rightcontainer")
 local Size = require("ui/size")
 local Storage = require("storage")
+local Style = require("kanbanstyle")
 local TextBoxWidget = require("ui/widget/textboxwidget")
 local TextWidget = require("ui/widget/textwidget")
 local TitleBar = require("ui/widget/titlebar")
@@ -101,7 +101,7 @@ local BoardView = InputContainer:extend{
 local function cardMarkerText(card)
     local markers = {}
     if type(card.notes) == "string" and card.notes:match("%S") then
-        table.insert(markers, "¶")
+        table.insert(markers, _("Notes"))
     end
     local checklist = card.checklist or {}
     if #checklist > 0 then
@@ -174,10 +174,10 @@ function BoardView:layout(changed_columns)
         width = self.dimen.w,
         align = "center",
         -- The title is the board switcher: the ▼ marks it as tappable.
-        title = board and (board.name .. (filter and " [" .. filter.name .. "]" or "") .. " ▼") or _("Kanban board"),
+        title = board and (board.name .. " ▼") or _("Kanban board"),
         title_face = Font:getFace("smallinfofontbold"),
         with_bottom_line = true,
-        bottom_line_color = Blitbuffer.COLOR_DARK_GRAY,
+        bottom_line_color = Blitbuffer.COLOR_BLACK,
         bottom_line_h_padding = Size.padding.large,
         left_icon = "appbar.menu",
         left_icon_tap_callback = function() self:onShowMenu() end,
@@ -208,7 +208,32 @@ function BoardView:layout(changed_columns)
 
     local footer = self:buildFooter(board, first, last)
 
-    local body_h = self.dimen.h - self.title_bar:getSize().h - footer:getSize().h
+    self.filter_strip = nil
+    local filter_height = 0
+    if filter then
+        local strip_height = Screen:scaleBySize(32)
+        local clear_width = Screen:scaleBySize(84)
+        local filter_button = Style.button{
+            text=T(_("Label: %1"),filter.name),width=self.dimen.w-2*outer-clear_width,
+            height=strip_height-2*Size.padding.small,padding_v=Size.padding.small,align="left",
+            text_font_face="cfont",text_font_size=16,bordersize=0,show_parent=self,
+            callback=function() CardDialog.filterLabels(self) end,
+        }
+        self.filter_clear_button = Style.button{
+            text=_("× Clear"),width=clear_width,height=strip_height-2*Size.padding.small,padding_v=Size.padding.small,
+            text_font_face="cfont",text_font_size=16,bordersize=0,show_parent=self,
+            callback=function()
+                self.label_filter=nil;self.card_start={};self:refresh()
+            end,
+        }
+        self.filter_strip=FrameContainer:new{
+            padding_left=outer,padding_right=outer,padding_top=0,padding_bottom=0,
+            bordersize=0,background=Blitbuffer.COLOR_WHITE,
+            HorizontalGroup:new{align="center",filter_button,self.filter_clear_button},
+        }
+        filter_height=self.filter_strip:getSize().h
+    else self.filter_clear_button=nil end
+    local body_h = self.dimen.h - self.title_bar:getSize().h - footer:getSize().h - filter_height
     local now_card = board and board.now_card and board.cards[board.now_card]
     if now_card and self.label_filter and not Model.hasLabel(now_card, self.label_filter) then
         now_card = nil
@@ -217,7 +242,7 @@ function BoardView:layout(changed_columns)
     local now_bar_gap = Size.padding.small
     local columns_h = body_h
     self.now_card_target = nil
-    self.columns_top = self.title_bar:getSize().h
+    self.columns_top = self.title_bar:getSize().h + filter_height
     if now_card and not now_card.archived then
         local text = T(_("Now: %1"), now_card.title)
         local bar_outer = Size.padding.large
@@ -233,7 +258,7 @@ function BoardView:layout(changed_columns)
             color = Blitbuffer.COLOR_BLACK,
             radius = Size.radius.window,
             padding = bar_padding,
-            background = Blitbuffer.COLOR_LIGHT_GRAY,
+            background = Blitbuffer.COLOR_WHITE,
             TextBoxWidget:new{
                 text = text,
                 face = face,
@@ -241,7 +266,7 @@ function BoardView:layout(changed_columns)
                 width = text_width,
                 height = lines * line_height + glyph_extra_height,
                 height_overflow_show_ellipsis = true,
-                bgcolor = Blitbuffer.COLOR_LIGHT_GRAY,
+                bgcolor = Blitbuffer.COLOR_WHITE,
             },
         }
         local now_bar_row = HorizontalGroup:new{
@@ -262,7 +287,7 @@ function BoardView:layout(changed_columns)
             TextWidget:new{
                 text = _("This board has no columns."),
                 face = Font:getFace("infofont"),
-                fgcolor = Blitbuffer.COLOR_DARK_GRAY,
+                fgcolor = Blitbuffer.COLOR_BLACK,
             },
         }
     else
@@ -270,7 +295,7 @@ function BoardView:layout(changed_columns)
     end
 
     -- Named whole regions, resolved from painted widgets rather than y offsets.
-    self.regions = { tabs = self.footer_region }
+    self.regions = { tabs = self.footer_region, filter = self.filter_strip }
     for id, cached in pairs(self.column_cache) do
         self.regions[id] = cached.widget
     end
@@ -293,6 +318,7 @@ function BoardView:layout(changed_columns)
         VerticalGroup:new{
             align = "left", -- keep a short last column page left-aligned
             self.title_bar,
+            self.filter_strip or VerticalSpan:new{width=0},
             body,
             footer,
         },
@@ -319,7 +345,7 @@ function BoardView:buildColumns(board, first, last, body_h, changed_columns)
         or nil
     local top = self.columns_top or self.title_bar:getSize().h
 
-    local card_border = Size.border.button
+    local card_border = Style.border
     local card_pad = Size.padding.large
     local card_gap = Screen:scaleBySize(8)
     local title_face = Font:getFace("cfont", 18)
@@ -328,8 +354,8 @@ function BoardView:buildColumns(board, first, last, body_h, changed_columns)
     local marker_line_h = marker_measure:getSize().h
 
     local header_h = Screen:scaleBySize(36)
-    local header_rule = Size.line.thick * 2
-    local pager_h = Screen:scaleBySize(28)
+    local header_rule = Style.border
+    local pager_h = Screen:scaleBySize(22)
     local pager_gap = card_gap
 
     -- Quick-move: the picked card gets a heavy border and a light gray fill, and
@@ -373,7 +399,7 @@ function BoardView:buildColumns(board, first, last, body_h, changed_columns)
             local count_widget = TextWidget:new{
                 text = tostring(#column.cards),
                 face = Font:getFace("xx_smallinfofont"),
-                fgcolor = Blitbuffer.COLOR_DARK_GRAY,
+                fgcolor = Blitbuffer.COLOR_BLACK,
             }
             local name_widget = TextWidget:new{
                 text = util.trim(column.name),
@@ -383,7 +409,7 @@ function BoardView:buildColumns(board, first, last, body_h, changed_columns)
             }
             local name_size = name_widget:getSize()
             local name_bb = Blitbuffer.new(name_size.w, name_size.h, Blitbuffer.TYPE_BB8)
-            name_bb:fill(Blitbuffer.COLOR_LIGHT_GRAY)
+            name_bb:fill(Blitbuffer.COLOR_WHITE)
             name_widget:paintTo(name_bb, 0, 0)
             name_widget:free()
             local name_image = ImageWidget:new{
@@ -395,10 +421,10 @@ function BoardView:buildColumns(board, first, last, body_h, changed_columns)
                 width = col_w,
                 height = body_h,
                 bordersize = card_border,
-                color = Blitbuffer.COLOR_GRAY,
+                color = Blitbuffer.COLOR_BLACK,
                 radius = Size.radius.window,
                 padding = strip_pad,
-                background = Blitbuffer.COLOR_LIGHT_GRAY,
+                background = Blitbuffer.COLOR_WHITE,
                 CenterContainer:new{
                     dimen = Geom:new{ w = inner_w, h = inner_h },
                     VerticalGroup:new{
@@ -423,6 +449,7 @@ function BoardView:buildColumns(board, first, last, body_h, changed_columns)
             local count = #column.cards
             local title_lines = {}
             local marker_texts = {}
+            local label_texts = {}
             local card_heights = {}
             for position, card_id in ipairs(column.cards) do
                 local card = board.cards[card_id]
@@ -430,26 +457,29 @@ function BoardView:buildColumns(board, first, last, body_h, changed_columns)
                     card.title, text_w, title_face, card_id == self.moving_card)
                 title_lines[card_id] = lines
                 local marker_text = cardMarkerText(card)
-                local labels = Model.labelText(board, card)
-                if labels ~= "" then
-                    marker_text = labels .. (marker_text and " · " .. marker_text or "")
+                local labels = {}
+                for _,id in ipairs(card.labels or {}) do
+                    local label=Model.findLabel(board,id)
+                    if label then labels[#labels+1]=label.name end
                 end
+                if #labels>0 then label_texts[card_id] = table.concat(labels," · ") end
                 marker_texts[card_id] = marker_text
                 card_heights[position] = lines * line_h + glyph_extra_height
                     + (marker_text and marker_line_h + COLUMN_MARKER_GAP or 0)
+                    + (label_texts[card_id] and marker_line_h + 2*(Size.padding.small+Style.border) + COLUMN_MARKER_GAP or 0)
                     + 2 * (card_border + card_pad)
             end
             local add_card_lines, add_card_glyph_extra_height = measureTitleLines(
                 _("+ Add card"), text_w, title_face)
             local add_card_height = add_card_lines * line_h + add_card_glyph_extra_height
                 + 2 * (card_border + card_pad)
+            -- Reserve the same creation control on every page, so capturing a
+            -- task never requires paging through an entire column first.
+            cards_h = cards_h - card_gap - add_card_height
             local pages = {}
             local page_start, page_height
             for position, card_h in ipairs(card_heights) do
                 local required_h = card_h + (page_height and card_gap or 0)
-                if position == count then
-                    required_h = required_h + card_gap + add_card_height
-                end
                 if page_height and page_height + required_h > cards_h then
                     table.insert(pages, { start = page_start, stop = position - 1 })
                     page_start = position
@@ -513,7 +543,8 @@ function BoardView:buildColumns(board, first, last, body_h, changed_columns)
                         dimen = Geom:new{ w = inner_w - badge_w - Size.padding.default, h = header_h },
                         TextWidget:new{
                             text = column.name,
-                            face = Font:getFace("smallinfofontbold"),
+                            face = Font:getFace("cfont", 20),
+                            bold = true,
                             max_width = inner_w - badge_w - Size.padding.default,
                             fgcolor = ink,
                         },
@@ -530,25 +561,9 @@ function BoardView:buildColumns(board, first, last, body_h, changed_columns)
                 align = "left",
                 VerticalSpan:new{ width = outer },
                 header,
-                LineWidget:new{ dimen = Geom:new{ w = col_w, h = header_rule } },
+                LineWidget:new{ dimen = Geom:new{ w = col_w, h = header_rule }, background = Style.rule },
                 VerticalSpan:new{ width = card_gap },
             }
-            if count == 0 then
-                table.insert(group, FrameContainer:new{
-                    bordersize = card_border,
-                    color = Blitbuffer.COLOR_GRAY,
-                    radius = Size.radius.window,
-                    padding = card_pad,
-                    CenterContainer:new{
-                        dimen = Geom:new{ w = text_w, h = line_h },
-                        TextWidget:new{
-                            text = _("No cards"),
-                            face = Font:getFace("x_smallinfofont"),
-                            fgcolor = Blitbuffer.COLOR_DARK_GRAY,
-                        },
-                    },
-                })
-            end
             for position = start, stop do
                 local card = board.cards[column.cards[position]]
                 local picked = card.id == self.moving_card or self.selected_cards and self.selected_cards[card.id]
@@ -560,7 +575,7 @@ function BoardView:buildColumns(board, first, last, body_h, changed_columns)
                     width = text_w,
                     height = title_h,
                     height_overflow_show_ellipsis = true,
-                    bgcolor = picked and Blitbuffer.COLOR_LIGHT_GRAY or Blitbuffer.COLOR_WHITE,
+                    bgcolor = picked and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_WHITE,
                 }
                 local content = title
                 if marker_texts[card.id] then
@@ -572,8 +587,22 @@ function BoardView:buildColumns(board, first, last, body_h, changed_columns)
                             text = marker_texts[card.id],
                             face = marker_face,
                             max_width = text_w,
-                            fgcolor = Blitbuffer.COLOR_DARK_GRAY,
-                            bgcolor = picked and Blitbuffer.COLOR_LIGHT_GRAY or Blitbuffer.COLOR_WHITE,
+                            fgcolor = Blitbuffer.COLOR_BLACK,
+                            bgcolor = picked and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_WHITE,
+                        },
+                    }
+                end
+                if label_texts[card.id] then
+                    content = VerticalGroup:new{
+                        align="left",content,VerticalSpan:new{width=COLUMN_MARKER_GAP},
+                        FrameContainer:new{
+                            bordersize=Style.border,padding=Size.padding.small,radius=Style.radius,
+                            background=Style.surface,
+                            TextWidget:new{
+                                text=label_texts[card.id],face=marker_face,
+                                max_width=math.max(1,text_w-2*Size.padding.small),
+                                fgcolor=Blitbuffer.COLOR_BLACK,bgcolor=Style.surface,
+                            },
                         },
                     }
                 end
@@ -589,14 +618,15 @@ function BoardView:buildColumns(board, first, last, body_h, changed_columns)
                         FrameContainer:new{
                             bordersize = 0,
                             padding = picked_pad,
-                            background = Blitbuffer.COLOR_LIGHT_GRAY,
+                            background = Blitbuffer.COLOR_WHITE,
                             content,
                         },
                     }
                 else
                     frame = FrameContainer:new{
                         bordersize = card_border,
-                        radius = Size.radius.window,
+                        color = Style.rule,
+                        radius = Style.radius,
                         padding = card_pad,
                         background = Blitbuffer.COLOR_WHITE,
                         content,
@@ -608,37 +638,48 @@ function BoardView:buildColumns(board, first, last, body_h, changed_columns)
                     table.insert(group, VerticalSpan:new{ width = card_gap })
                 end
             end
-            if count == 0 or stop == count then
-                table.insert(group, VerticalSpan:new{ width = card_gap })
+            if count == 0 then
+                table.insert(group, TextBoxWidget:new{
+                    text = self.label_filter and _("No matching cards") or _("Ready for your next task"),
+                    width = col_w, alignment = "center",
+                    face = marker_face, fgcolor = Blitbuffer.COLOR_BLACK,
+                })
+            end
+            do -- Keep creation in a stable position above the page controls.
+                table.insert(group, VerticalSpan:new{
+                    width = math.max(card_gap, body_h - pager_gap - pager_h - add_card_height - group:getSize().h),
+                })
                 local add_card_row = FrameContainer:new{
                     bordersize = card_border,
-                    color = Blitbuffer.COLOR_GRAY,
-                    radius = Size.radius.window,
+                    color = Blitbuffer.COLOR_BLACK,
+                    radius = Style.radius,
                     padding = card_pad,
-                    background = Blitbuffer.COLOR_WHITE,
+                    background = Style.surface,
                     TextBoxWidget:new{
                         text = _("+ Add card"),
+                        bgcolor = Blitbuffer.COLOR_WHITE,
                         face = title_face,
                         width = text_w,
                         height = add_card_lines * line_h,
                         alignment = "center",
-                        fgcolor = Blitbuffer.COLOR_DARK_GRAY,
+                        fgcolor = Blitbuffer.COLOR_BLACK,
                     },
                 }
                 table.insert(self.add_card_targets, { frame = add_card_row, id = column.id })
                 table.insert(group, add_card_row)
             end
 
+            group:resetLayout()
             local used = group:getSize().h
-            table.insert(group, VerticalSpan:new{ width = body_h - pager_gap - pager_h - used })
+            table.insert(group, VerticalSpan:new{ width = math.max(0, body_h - pager_gap - pager_h - used) })
             table.insert(group, VerticalSpan:new{ width = pager_gap })
             local pager = CenterContainer:new{
                 dimen = Geom:new{ w = col_w, h = pager_h },
                 #pages > 1 and TextWidget:new{
-                    text = start == stop
-                        and T(_("Card %1 of %2"), start, count)
-                        or T(_("Cards %1–%2 of %3"), start, stop, count),
+                    text = T(_("%1–%2 of %3 · swipe ↕"), start, stop, count),
                     face = Font:getFace("xx_smallinfofont"),
+                    max_width = col_w,
+                    fgcolor = Blitbuffer.COLOR_BLACK,
                 } or VerticalSpan:new{ width = 0 },
             }
             table.insert(group, pager)
@@ -679,7 +720,7 @@ function BoardView:buildFooter(board, first, last)
     self.tab_targets = {}
 
     local function addChevron(icon, enabled, callback, width)
-        local button = Button:new{
+        local button = Style.button{
             icon = icon,
             icon_width = Screen:scaleBySize(20),
             icon_height = Screen:scaleBySize(20),
@@ -706,7 +747,7 @@ function BoardView:buildFooter(board, first, last)
             { text = _("Archive"), callback = function() self:changeSelection() end },
             { text = _("Cancel"), enabled = true, callback = function() self:setSelectMode(false) end },
         }) do
-            local button = Button:new{
+            local button = Style.button{
                 text = action.text, callback = action.callback,
                 width = math.floor(row_width / 4),
                 height = row_height - 2 * (Size.padding.small + Size.border.button),
@@ -764,7 +805,7 @@ function BoardView:buildFooter(board, first, last)
             if truncated then
                 name = name .. "…"
             end
-            local tab = Button:new{
+            local tab = Style.button{
                 text = name .. " " .. count_text,
                 text_font_face = "smallinfofont",
                 text_font_size = 16,
@@ -774,8 +815,10 @@ function BoardView:buildFooter(board, first, last)
                 height = row_height - 2 * (Size.padding.small + Size.border.button),
                 padding_h = tab_padding_h,
                 padding_v = Size.padding.small,
-                bordersize = Size.border.button,
+                bordersize = 0,
+                background = Blitbuffer.COLOR_WHITE,
                 preselect = index >= first and index <= last,
+                radius = Style.radius,
                 callback = function()
                     if self.moving_card then
                         CardMove.drop(self, { id = column.id })
@@ -814,7 +857,7 @@ function BoardView:buildFooter(board, first, last)
     return VerticalGroup:new{
         LineWidget:new{
             dimen = Geom:new{ w = self.dimen.w - 2 * Size.padding.large, h = Size.line.thin },
-            background = Blitbuffer.COLOR_DARK_GRAY,
+            background = Blitbuffer.COLOR_BLACK,
         },
         self.footer_region,
     }
