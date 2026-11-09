@@ -1,6 +1,5 @@
 local Blitbuffer = require("ffi/blitbuffer")
 local BoardView = require("boardview")
-local Button = require("ui/widget/button")
 local CardView = require("cardview")
 local Device = require("device")
 local Font = require("ui/font")
@@ -10,6 +9,7 @@ local InputContainer = require("ui/widget/container/inputcontainer")
 local Model = require("model")
 local ScrollableContainer = require("ui/widget/container/scrollablecontainer")
 local Size = require("ui/size")
+local Style = require("kanbanstyle")
 local Storage = require("storage")
 local TextWidget = require("ui/widget/textwidget")
 local TitleBar = require("ui/widget/titlebar")
@@ -41,7 +41,7 @@ function TodayView:layout()
         title = _("Today"),
         title_face = Font:getFace("smallinfofontbold"),
         with_bottom_line = true,
-        bottom_line_color = Blitbuffer.COLOR_DARK_GRAY,
+        bottom_line_color = Blitbuffer.COLOR_BLACK,
         bottom_line_h_padding = Size.padding.large,
         close_callback = function() self:onClose() end,
         show_parent = self,
@@ -60,25 +60,27 @@ function TodayView:layout()
             width = list_width,
             bordersize = 0,
             padding = Size.padding.default,
-            background = Blitbuffer.COLOR_LIGHT_GRAY,
+            background = Blitbuffer.COLOR_WHITE,
             TextWidget:new{
                 text = board.name,
-                face = Font:getFace("smallinfofontbold"),
+                face = Font:getFace("cfont", 20),
+                bold = true,
                 max_width = list_width - 2 * Size.padding.default,
             },
         })
+        table.insert(section, VerticalSpan:new{ width = Size.padding.small })
         if not column then
             table.insert(section, TextWidget:new{
                 text = _("No in-progress column."),
                 face = Font:getFace("x_smallinfofont"),
-                fgcolor = Blitbuffer.COLOR_DARK_GRAY,
+                fgcolor = Blitbuffer.COLOR_BLACK,
                 padding = Size.padding.large,
             })
         elseif #column.cards == 0 then
             table.insert(section, TextWidget:new{
                 text = _("No cards in this column."),
                 face = Font:getFace("x_smallinfofont"),
-                fgcolor = Blitbuffer.COLOR_DARK_GRAY,
+                fgcolor = Blitbuffer.COLOR_BLACK,
                 padding = Size.padding.large,
             })
         else
@@ -86,13 +88,15 @@ function TodayView:layout()
                 local card = board.cards[card_id]
                 local selected_board, selected_column = board, column
                 local selected_card_id, selected_index = card_id, index
-                table.insert(section, Button:new{
+                table.insert(section, Style.button{
                     text = card.title,
                     width = card_width,
                     height = Screen:scaleBySize(52),
                     align = "left",
                     text_font_face = "smallinfofont",
-                    text_font_size = 22,
+                    text_font_size = 20,
+                    bordersize = Style.border,
+                    radius = Style.radius,
                     text_font_bold = false,
                     avoid_text_truncation = false,
                     padding_h = Size.padding.large,

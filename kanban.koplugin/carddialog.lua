@@ -6,15 +6,16 @@ Every function takes the BoardView as `view`. Changes go through `Model` and
 `view:commit()`, which saves the state and repaints the board.
 ]]
 
-local ButtonDialog = require("ui/widget/buttondialog")
+local Blitbuffer = require("ffi/blitbuffer")
 local ConfirmBox = require("ui/widget/confirmbox")
 local Device = require("device")
 local Font = require("ui/font")
+local Style = require("kanbanstyle")
+local ActionPanel = require("actionpanel")
 local InfoMessage = require("ui/widget/infomessage")
 local InputDialog = require("ui/widget/inputdialog")
 local Model = require("model")
 local Markdown = require("markdown")
-local MultiInputDialog = require("ui/widget/multiinputdialog")
 local PathChooser = require("ui/widget/pathchooser")
 local TextBoxWidget = require("ui/widget/textboxwidget")
 local UIManager = require("ui/uimanager")
@@ -224,7 +225,7 @@ function CardDialog.chooseLabels(board, selected, done)
         UIManager:close(dialog)
         done()
     end } }
-    dialog = showDialog(ButtonDialog:new{
+    dialog = showDialog(Style.dialog{
         title = #buttons == 1 and _("Create labels from the board menu first.") or _("Card labels"),
         buttons = buttons,
     })
@@ -273,7 +274,7 @@ function CardDialog.showLabels(view)
         }
     end } }
     buttons[#buttons + 1] = { { text = _("Close"), callback = function() UIManager:close(dialog) end } }
-    dialog = showDialog(ButtonDialog:new{ title = _("Board labels (tap to rename)"), buttons = buttons })
+    dialog = showDialog(Style.dialog{ title = _("Board labels (tap to rename)"), buttons = buttons })
 end
 
 function CardDialog.filterLabels(view)
@@ -293,78 +294,14 @@ function CardDialog.filterLabels(view)
         buttons[#buttons + 1] = { { text = label.name, callback = function() filter(id) end } }
     end
     buttons[#buttons + 1] = { { text = _("Cancel"), callback = function() UIManager:close(dialog) end } }
-    dialog = showDialog(ButtonDialog:new{ title = _("Filter by label"), buttons = buttons })
+    dialog = showDialog(Style.dialog{ title = _("Filter by label"), buttons = buttons })
 end
 
 -- Card editor: a new card in `column_id`, or the existing card `card_id`.
 function CardDialog.editCard(view, column_id, card_id)
-    local board = view:getBoard()
-    local card = card_id and board.cards[card_id]
-    local selected = {}
-    for _, id in ipairs(card and card.labels or {}) do selected[id] = true end
-    local dialog
-    local function save()
-        local fields = dialog:getFields()
-        if not hasText(fields[1]) then
-            UIManager:show(InfoMessage:new{
-                text = _("A card needs a title."),
-                timeout = 2,
-            })
-            return
-        end
-        UIManager:close(dialog)
-        local labels = {}
-        for label_index, label in ipairs(board.labels or {}) do
-            if selected[label.id] then labels[#labels + 1] = label.id end
-        end
-        local values = { title = fields[1], notes = fields[2], labels = labels }
-        if card then
-            view:commit(function() return Model.editCard(board, card_id, values) end)
-        else
-            view:commit(function() return Model.addCard(board, column_id, values) end, function()
-                local column = view:findColumn(column_id)
-                view:revealCard(column_id, #column.cards)
-            end)
-        end
-    end
-    dialog = MultiInputDialog:new{
-        title = card and _("Edit card") or _("New card"),
-        fields = {
-            {
-                description = _("Title"),
-                text = card and card.title or "",
-                hint = _("What needs doing?"),
-            },
-            {
-                description = _("Notes"),
-                text = card and card.notes or "",
-                hint = _("Details, links, next steps (optional)"),
-                allow_newline = true,
-            },
-        },
-        -- Enter saves from the title field; the notes field takes new lines.
-        enter_callback = save,
-        buttons = {
-            { { text = _("Labels…"), callback = function()
-                CardDialog.chooseLabels(board, selected, function() end)
-            end } },
-            {
-                {
-                    text = _("Cancel"),
-                    id = "close",
-                    callback = function()
-                        UIManager:close(dialog)
-                    end,
-                },
-                {
-                    text = card and _("Save") or _("Add"),
-                    callback = save,
-                },
-            },
-        },
-    }
-    UIManager:show(dialog)
-    dialog:onShowKeyboard()
+    local editor = require("cardeditor"):new{view=view,column_id=column_id,card_id=card_id}
+    UIManager:show(editor,"ui")
+    return editor
 end
 
 -- "Move to…": the other columns, one per row.
@@ -395,13 +332,13 @@ function CardDialog.moveCardTo(view, card_id)
             UIManager:close(dialog)
         end,
     } })
-    dialog = showDialog(ButtonDialog:new{
+    dialog = showDialog(Style.dialog{
         title = T(_("Move “%1” to"), card.title),
         buttons = buttons,
     })
 end
 
-function CardDialog.showCardActions(view, card_id)
+function CardDialog.showCardActions(view, card_id, organizing)
     local board = view:getBoard()
     local card = board.cards[card_id]
     local column, index = view:locateCard(card_id)
@@ -428,7 +365,7 @@ function CardDialog.showCardActions(view, card_id)
         if view:commit(function() return Model.moveCard(board, card_id, column.id, to_index) end, function()
             view:revealCard(column.id, to_index)
         end, nil, _("Card moved"), true, { kind = "card-reorder", card_id = card_id }) then
-            CardDialog.showCardActions(view, card_id)
+            CardDialog.showCardActions(view, card_id, true)
         end
     end
     local previous_column = board.columns[column_position - 1]
@@ -504,7 +441,7 @@ function CardDialog.showCardActions(view, card_id)
                 callback = function()
                     UIManager:close(dialog)
                     if view:undo() then
-                        CardDialog.showCardActions(view, card_id)
+                        CardDialog.showCardActions(view, card_id, true)
                     end
                 end,
             },
@@ -535,12 +472,68 @@ function CardDialog.showCardActions(view, card_id)
             callback = action(function() end),
         },
     })
-    dialog = ButtonDialog:new{
-        title = card.title,
-        use_info_style = false, -- bold title, so the notes below stand apart
-        buttons = buttons,
-    }
-    if hasText(card.notes) then
+    if organizing then
+        local reorder_buttons = { buttons[2], buttons[3], buttons[4] }
+        if inline_undo then table.insert(reorder_buttons, buttons[5]) end
+        table.insert(reorder_buttons, { {
+            text = _("Place on board…"),
+            callback = action(function() view:setMovingCard(card_id) end),
+        } })
+        table.insert(reorder_buttons, { {
+            text = _("Back"), font_size = 18, font_bold = false,
+            callback = action(function() CardDialog.showCardActions(view, card_id) end),
+        } })
+        buttons = reorder_buttons
+    else
+        local primary = next_column and {
+            text = T(_("Move to %1 →"), next_column.name),
+            font_size = 24, font_bold = true, background = Blitbuffer.COLOR_WHITE,
+            callback = action(function() moveToColumn(next_column.id) end),
+        } or {
+            text = _("Edit card"), font_size = 24, font_bold = true,
+            background = Blitbuffer.COLOR_WHITE,
+            callback = action(function() CardDialog.editCard(view, column.id, card_id) end),
+        }
+        local edit_move = next_column and buttons[1] or { buttons[1][2] }
+        local pin = buttons[#buttons - 1]
+        local archive = buttons[#buttons][1]
+        archive.font_size, archive.font_bold = 18, false
+        buttons = {
+            { primary },
+            edit_move,
+            pin,
+            { {
+                text = _("Reorder…"), font_size = 18, font_bold = false,
+                callback = action(function() CardDialog.showCardActions(view, card_id, true) end),
+            }, {
+                text = _("Select card"), font_size = 18, font_bold = false,
+                callback = action(function()
+                    view:setSelectMode(true)
+                    view.selected_cards[card_id] = true
+                    view:refresh()
+                end),
+            } },
+            { archive, {
+                text = _("Cancel"), font_size = 18, font_bold = false,
+                callback = action(function() end),
+            } },
+        }
+    end
+    if organizing then
+        dialog = Style.dialog{title=card.title, use_info_style=false, buttons=buttons}
+    else
+        buttons[1][1].description = T(_("From %1"), column.name)
+        buttons[2][1].description = next_column and _("Title, notes and labels") or _("Choose a destination")
+        if buttons[2][2] then buttons[2][2].description = _("Choose a destination") end
+        buttons[3][1].description = _("Keep one task in focus")
+        dialog = ActionPanel:new{
+            title=card.title,
+            context=T(_("%1 · %2"), board.name, column.name),
+            buttons=buttons,
+            row_styles={"hero","tile","tile","quiet","quiet"},
+        }
+    end
+    if organizing and hasText(card.notes) then
         local notes = card.notes
         if #notes > NOTES_PREVIEW then
             -- Cut on a UTF-8 character boundary.
@@ -576,7 +569,7 @@ function CardDialog.showColumnActions(view, column_id)
             CardDialog.showColumnActions(view, column_id)
         end
     end
-    dialog = showDialog(ButtonDialog:new{
+    dialog = showDialog(Style.dialog{
         title = T(N_("%1 · 1 card", "%1 · %2 cards", #column.cards), column.name, #column.cards),
         use_info_style = false,
         buttons = {
@@ -691,7 +684,7 @@ function CardDialog.restoreCard(view, card_id, close_parent)
             UIManager:close(dialog)
         end,
     } })
-    dialog = showDialog(ButtonDialog:new{
+    dialog = showDialog(Style.dialog{
         title = T(_("Restore “%1” to"), card.title),
         buttons = buttons,
     })
@@ -730,7 +723,7 @@ function CardDialog.showArchive(view)
             UIManager:close(dialog)
         end,
     } })
-    dialog = showDialog(ButtonDialog:new{
+    dialog = showDialog(Style.dialog{
         title = T(_("Archived cards (%1)\nTap a card to restore it."), #board.archived),
         buttons = buttons,
     })
@@ -825,7 +818,7 @@ function CardDialog.showBoards(view)
             end),
         },
     })
-    dialog = showDialog(ButtonDialog:new{
+    dialog = showDialog(Style.dialog{
         title = _("Boards"),
         buttons = buttons,
     })
@@ -850,13 +843,27 @@ function CardDialog.showBoardMenu(view)
 
     local undo = view.state.undo
     local can_undo = undo and undo.board and undo.board.id == board.id
-    dialog = showDialog(ButtonDialog:new{
+    local menu = {
         title = board.name,
         use_info_style = false,
         buttons = {
-            { {text = _("GitHub issues…"), callback = action(function()
-                require("githubdialog").show(view)
-            end)} },
+            { {
+                text = _("Today"),
+                callback = action(function()
+                    local TodayView = require("todayview")
+                    UIManager:show(TodayView:new{
+                        state = view.state,
+                        ui = view.ui,
+                        board_view = view,
+                    }, "full")
+                end),
+            } },
+            { {
+                text = _("Select cards"),
+                callback = action(function()
+                    view:setSelectMode(true)
+                end),
+            } },
             { {
                 text = _("Labels…"),
                 callback = action(function() CardDialog.showLabels(view) end),
@@ -872,9 +879,9 @@ function CardDialog.showBoardMenu(view)
                 end),
             } },
             { {
-                text = _("Select cards"),
+                text = T(_("Archived cards (%1)"), #board.archived),
                 callback = action(function()
-                    view:setSelectMode(true)
+                    CardDialog.showArchive(view)
                 end),
             } },
             { {
@@ -894,16 +901,14 @@ function CardDialog.showBoardMenu(view)
                 end),
             } },
             { {
-                text = _("Today"),
+                text = _("Rotate screen"),
                 callback = action(function()
-                    local TodayView = require("todayview")
-                    UIManager:show(TodayView:new{
-                        state = view.state,
-                        ui = view.ui,
-                        board_view = view,
-                    }, "full")
+                    rotateScreen()
                 end),
             } },
+            { {text = _("GitHub issues…"), callback = action(function()
+                require("githubdialog").show(view)
+            end)} },
             { {
                 text = _("Export to Markdown…"),
                 callback = action(function()
@@ -916,20 +921,53 @@ function CardDialog.showBoardMenu(view)
                     importBoard(view)
                 end),
             } },
-            { {
-                text = T(_("Archived cards (%1)"), #board.archived),
-                callback = action(function()
-                    CardDialog.showArchive(view)
-                end),
-            } },
-            { {
-                text = _("Rotate screen"),
-                callback = action(function()
-                    rotateScreen()
-                end),
-            } },
         },
-    })
+    }
+    local rows = menu.buttons
+    local function submenu(title, entries)
+        return action(function()
+            -- Callbacks refer to this dialog, so dismissal always closes the
+            -- currently displayed level before performing the chosen action.
+            dialog = showDialog(ActionPanel:new{
+                title=title, context=board.name, buttons=entries,
+                row_styles={"tile","tile","tile","quiet","quiet"},
+            })
+        end)
+    end
+    rows[1][1].font_size = 24
+    rows[1][1].background = Blitbuffer.COLOR_WHITE
+    rows[1][1].font_bold = true
+    local tools = { rows[6], { rows[3][1] }, rows[5], rows[7] }
+    local sharing = { rows[8], rows[9], rows[10] }
+    local back = { {
+        text = _("Back"), font_size = 18, font_bold = false,
+        callback = action(function() CardDialog.showBoardMenu(view) end),
+    } }
+    table.insert(tools, back)
+    table.insert(sharing, back)
+    menu.buttons = {
+        rows[1],
+        { rows[2][1], rows[3][2] },
+    }
+    if can_undo then table.insert(menu.buttons, rows[4]) end
+    table.insert(menu.buttons, { {
+        text = _("Board tools…"), font_size = 18, font_bold = false,
+        callback = submenu(_("Board tools"), tools),
+    }, {
+        text = _("Import / export…"), font_size = 18, font_bold = false,
+        callback = submenu(_("Import / export"), sharing),
+    } })
+    rows[1][1].description = _("In-progress cards across your boards")
+    rows[2][1].description = _("Move or archive a group")
+    rows[3][2].description = _("Focus on a label")
+    local tools_row = menu.buttons[#menu.buttons]
+    tools_row[1].description = _("Columns, labels and archive")
+    tools_row[2].description = _("Markdown and GitHub issues")
+    local active_count = 0
+    for _, column in ipairs(board.columns) do active_count = active_count + #column.cards end
+    menu.context = T(_("%1 cards · %2 columns"), active_count, #board.columns)
+    menu.row_styles = can_undo and {"hero","tile","quiet","tile"} or {"hero","tile","tile"}
+    dialog = showDialog(ActionPanel:new(menu))
 end
 
 return CardDialog

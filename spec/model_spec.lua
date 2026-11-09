@@ -492,3 +492,29 @@ describe("kanban model", function()
         assert.is_nil(Model.daysInColumn(nil, clock))
     end)
 end)
+
+describe('complete card drafts', function()
+    it('saves a copied checklist with a new card and preserves it on ordinary edits', function()
+        local board=Model.newState().boards[1]
+        local draft={{text='  Review scope  ',done=true},{text='Publish',done=false}}
+        assert.is_true(Model.addCard(board,'c1',{title='Release',notes='Draft',checklist=draft}))
+        local id=board.columns[1].cards[1]
+        draft[1].text='Changed outside model'
+        assert.same({{text='Review scope',done=true},{text='Publish',done=false}},board.cards[id].checklist)
+        assert.is_true(Model.editCard(board,id,{title='Renamed'}))
+        assert.equals(2,#board.cards[id].checklist)
+        assert.is_true(Model.editCard(board,id,{title='Renamed',checklist={}}))
+        assert.same({},board.cards[id].checklist)
+    end)
+    it('rejects an invalid complete draft without partial updates or consumed ids', function()
+        local board=Model.newState().boards[1]
+        local next_id=board.next_id
+        assert.is_nil(Model.addCard(board,'c1',{title='Invalid',checklist={{text=' '}}}))
+        assert.equals(next_id,board.next_id)
+        assert.is_true(Model.addCard(board,'c1',{title='Original',notes='Keep',checklist={{text='Keep',done=true}}}))
+        local id=board.columns[1].cards[1]
+        local snapshot=Model.copyBoard(board)
+        assert.is_nil(Model.editCard(board,id,{title='Changed',notes='Changed',labels={},checklist={{text=''}}}))
+        assert.same(snapshot,board)
+    end)
+end)

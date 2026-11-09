@@ -828,3 +828,89 @@ These add to the per-phase orb notes above.
   `TextWidget` painted into a light-gray buffer and shown by an `ImageWidget` with
   `rotation_angle = 270`; this replaced an earlier one-letter-per-line layout. The
   card view's checklist uses ☐/☑ instead of `[ ]`/`[x]`.
+
+
+## UX overhaul — 2026-11-09
+
+- [x] Keep card capture available on every column page, with aligned placement.
+- [x] Keep paging as a compact range/swipe hint; remove the large paging buttons.
+- [x] Replace framed empty placeholders with helpful, filter-aware text.
+- [x] Expose Edit and Move directly in card details; show board/column context.
+- [x] Show checklist completion counts; move secondary row actions into **…**.
+- [x] Offer Undo after checklist deletion and inherit the active filter on creation.
+- [x] Put Today, selection and filtering ahead of administrative menu actions.
+- [x] Update smoke checks to resolve painted checklist controls rather than coordinates.
+- [x] Validate actual KOReader widgets at 600×800 and 800×600, including layout
+      bounds, paging, checklist toggle/delete/undo, filtered capture and existing
+      label integration checks. Standalone Bookshelf and transport checks pass.
+
+Decision: preserve the native monochrome KOReader controls and event-driven refresh
+model. No data migration or external UI dependencies. Physical e-ink responsiveness
+and ghosting still need device validation. The complete `busted` suite was not run
+in this environment because its runner is unavailable.
+
+
+### Revision after usability feedback
+
+- [x] Reduce the column paging area from 44 to 22 scaled pixels.
+- [x] Give stationary hold-and-release a contextual action menu; retain hold-and-slide dragging.
+- [x] Prioritize advancing to the next column, then editing/moving and pinning;
+      put reordering and selection below, with archive/cancel in smaller text.
+- [x] Move detailed ordering and tap-to-place into Reorder, keeping them available.
+- [x] Replace the flat board menu with daily actions and smaller Board tools /
+      Import / export entries. Use a larger shaded primary action.
+- [x] Verify hold/release, drag/undo, selection, hierarchy and swipe paging with
+      real widgets at portrait and landscape sizes; rerun labels integration checks.
+
+
+### Visual polish
+
+- [x] Use a shared monochrome style for dialogs, borders, radii and type.
+- [x] Replace heavy card outlines and column rules with fine gray strokes.
+- [x] Use soft count badges, creation controls and visible-column tabs.
+- [x] Strengthen card title typography and simplify notes/checklist presentation.
+- [x] Replace boxed checklist rows with fine separators and quiet overflow actions.
+- [x] Apply matching typography and compact styling to Today.
+- [x] Render and inspect portrait/landscape boards, details, menus and Today;
+      rerun interaction, undo and existing labels integration checks.
+
+
+### Custom action panels
+
+- [x] Add `actionpanel.lua`, composed from native containers and custom action
+      controls rather than ButtonDialog/ButtonTable. Retain native Button focus,
+      feedback and activation handling.
+- [x] Use a bottom-anchored sheet with contextual heading, dark primary action,
+      descriptive tiles, quiet secondary actions and explicit dismissal.
+- [x] Integrate card holds, board menu and board tools/transfer submenus.
+- [x] Bound long headings, scroll overflow, follow keyboard focus, consume inside
+      taps, dismiss outside and close safely on screen geometry changes.
+- [x] Add real event-dispatch checks for taps, disabled actions, dismissal, long
+      content, focus scrolling and resize; update emulator smoke discovery.
+- [x] Run portrait and landscape widget regressions and existing labels checks.
+
+
+### Unified editing, filters and previews
+
+- [x] Add `cardeditor.lua` with inline title/notes input, label toggles and draft
+      checklist controls. Save all fields through one model operation/commit.
+- [x] Preserve edits on layout/rotation and keep focused fields above the keyboard.
+- [x] Confirm discard for changed drafts; leave data untouched until saving.
+- [x] Validate checklist drafts before model mutation and copy their item tables.
+- [x] Add an active-only compact filter strip with change/clear actions.
+- [x] Separate preview title, notes/checklist/age metadata and label badge.
+- [x] Update label integration and emulator smoke paths for the new editor.
+- [x] Test cancellation, invalid drafts, atomic save/undo, keyboard layout,
+      resize/rotation and filter clearing with real widgets in both orientations.
+
+
+### Black-and-white contrast
+
+- [x] Replace gray text, separators, card outlines and metadata with black.
+- [x] Replace gray tile/control fills with white and thin black outlines.
+- [x] Use black count badges and inverted visible-column tabs; keep selected
+      cards distinct with heavy borders and checked labels with outlined controls.
+- [x] Retain native disabled-control treatment; custom unavailable actions have
+      an explicit unavailable label rather than relying on gray text.
+- [x] Re-render and inspect board, editor and action sheets; run both orientation
+      widget suites and rebuild the plugin package.

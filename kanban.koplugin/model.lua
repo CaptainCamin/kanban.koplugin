@@ -348,6 +348,19 @@ function Model.deleteColumn(board, column_id)
     return true
 end
 
+-- Validate a complete editor draft before touching any persisted card fields.
+local function draft_checklist(fields)
+    if fields.checklist == nil then return nil end
+    if type(fields.checklist) ~= "table" then return nil, "invalid checklist" end
+    local checklist = {}
+    for _, item in ipairs(fields.checklist) do
+        local text = type(item) == "table" and trim(item.text)
+        if not text then return nil, "checklist item text is required" end
+        checklist[#checklist+1] = {text=text, done=item.done == true}
+    end
+    return checklist
+end
+
 function Model.addCard(board, column_id, fields, index, clock)
     local column = find_column(board, column_id)
     local title = fields and trim(fields.title)
@@ -360,6 +373,8 @@ function Model.addCard(board, column_id, fields, index, clock)
     for _, id in ipairs(fields.labels or {}) do
         if not Model.findLabel(board, id) then return nil, "label not found" end
     end
+    local checklist, err = draft_checklist(fields)
+    if err then return nil, err end
     local timestamp = now(clock)
     local card_id = next_id(board, "k")
     board.cards[card_id] = {
@@ -370,7 +385,7 @@ function Model.addCard(board, column_id, fields, index, clock)
         updated = timestamp,
         moved = timestamp,
         archived = false,
-        checklist = {},
+        checklist = checklist or {},
         labels = copy_table(fields.labels or {}),
     }
     insert(column.cards, card_id, index)
@@ -386,10 +401,13 @@ function Model.editCard(board, card_id, fields, clock)
     if not title then
         return nil, "card title is required"
     end
+    local checklist, err = draft_checklist(fields)
+    if err then return nil, err end
     if fields.labels then
         local ok, err = Model.setCardLabels(board, card_id, fields.labels, clock)
         if not ok then return nil, err end
     end
+    if checklist then card.checklist = checklist end
     card.title = title
     card.notes = fields.notes or ""
     card.updated = now(clock)

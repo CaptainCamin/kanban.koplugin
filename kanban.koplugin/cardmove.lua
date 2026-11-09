@@ -265,7 +265,11 @@ function CardMove.release(view, pos)
         return false
     end
     if not view.dragging then
-        return true -- hold-and-lift stays picked up for tap-to-drop
+        -- A stationary hold requests actions. Motion still commits to dragging.
+        local card_id = view.moving_card
+        CardMove.drop(view, nil)
+        require("carddialog").showCardActions(view, card_id)
+        return true
     end
     local target = targetAt(view, pos)
     return CardMove.drop(view, target)
