@@ -1,0 +1,35 @@
+{
+  "name": "Publish e-reader UI test release",
+  "on": {
+    "push": {
+      "branches": [
+        "release/v0.1.0-rc.1"
+      ]
+    }
+  },
+  "permissions": {
+    "contents": "write"
+  },
+  "jobs": {
+    "release": {
+      "runs-on": "ubuntu-latest",
+      "timeout-minutes": 5,
+      "steps": [
+        {
+          "name": "Check out verified merged release source",
+          "uses": "actions/checkout@v4",
+          "with": {
+            "ref": "da94f2a4ff55a4d8dfe757a0c00377b883f4f9c2"
+          }
+        },
+        {
+          "name": "Build, verify and publish installable ZIP",
+          "env": {
+            "GH_TOKEN": "${{ github.token }}"
+          },
+          "run": "set -euo pipefail\nbash package.sh\nsha256sum kanban.koplugin.zip > kanban.koplugin.zip.sha256\npython3 - <<'PYVERIFY'\nimport subprocess, zipfile\ntracked = subprocess.check_output(['git', 'ls-files', 'kanban.koplugin'], text=True).splitlines()\nwith zipfile.ZipFile('kanban.koplugin.zip') as archive:\n    assert archive.testzip() is None\n    files = [name for name in archive.namelist() if not name.endswith('/')]\n    assert sorted(files) == sorted(tracked)\n    for name in files:\n        assert archive.read(name) == subprocess.check_output(['git', 'show', 'HEAD:' + name]), name\nprint('Verified installable archive against the release commit')\nPYVERIFY\ncat > /tmp/kanban-release-notes.md <<'RELEASENOTES'\nTest release of the merged UX/UI overhaul, built from main at da94f2a4ff55a4d8dfe757a0c00377b883f4f9c2.\n\n## What's new\n\n- Custom card and board action panels with a distinct primary action and compact secondary controls.\n- Unified draft-based editor for title, multiline notes, labels and checklist, with discard protection and one-step undo.\n- Active-filter strip with Clear, separate card metadata and label badges, and card creation on every page.\n- Black-and-white text, outlines and controls for e-ink readability.\n- Improved Bookshelf module layout and typography.\n- Hold and release opens card actions; hold and slide continues to move cards.\n\n## Install on KOReader\n\n1. Download **kanban.koplugin.zip** below (not GitHub's source-code archives).\n2. Close KOReader, extract the ZIP, and replace the `kanban.koplugin` folder inside KOReader's `plugins` directory.\n3. Restart KOReader and open **Tools \u2192 Kanban board \u2192 Open board**.\n\nThe ZIP contains the installable plugin folder directly. Existing board data lives separately in KOReader's settings directory.\n\n## Validation\n\nReal KOReader widget checks pass in portrait and landscape, including editing, keyboard layout, rotation, saving/cancelling, filtering, dragging and undo. Standalone Bookshelf and GitHub transport checks pass. The archive contents were compared byte-for-byte with the tagged commit and ZIP integrity was checked; a SHA-256 checksum is attached.\n\nThis is a prerelease for physical-device testing. The full `busted` suite and X11 smoke harness were not run in this environment. Device refresh behavior and touch ergonomics still need e-reader validation.\nRELEASENOTES\ngh release create v0.1.0-rc.1 kanban.koplugin.zip kanban.koplugin.zip.sha256 --repo CaptainCamin/kanban.koplugin --target da94f2a4ff55a4d8dfe757a0c00377b883f4f9c2 --title 'v0.1.0-rc.1 \u2014 E-reader UI test release' --notes-file /tmp/kanban-release-notes.md --prerelease\n"
+        }
+      ]
+    }
+  }
+}
