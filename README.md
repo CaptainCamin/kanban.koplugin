@@ -67,8 +67,10 @@ enabled, Kanban also provides a **Kanban board** micro-module. Add it through
 Bookshelf's module picker and choose a board. Each instance remembers its own
 board, so you can add several cards for different boards.
 
-The module shows the board name, its pinned **Now** card, and up to three tasks
-from its in-progress column (the same column used by **Today**). Tap to open
+The module shows a bold board heading, a separate pinned **Now** section, and
+up to three tasks from its in-progress column (the same column used by **Today**).
+A task count and “+N more” hint keep the summary easy to scan. Text and spacing
+adapt to the card size and follow Bookshelf’s theme. Tap to open
 that board. Use **Module settings…** from the card's long-press menu to choose
 another board. If a chosen board is deleted, tap the card to choose again.
 Closing a board refreshes the module. Everything works offline; Bookshelf is

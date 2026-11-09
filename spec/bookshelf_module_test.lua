@@ -17,7 +17,12 @@ local available = true
 package.preload["gettext"] = function() return function(s) return s end end
 package.preload["lib/bookshelf_module_kit"] = function() return {
     plugin = function(dir) assert(dir == root); return available and owner end,
-    fitText = function(options) return options end,
+    COLOR_PRIMARY = "primary", COLOR_MUTED = "muted", CARD_BG = "card",
+    sc = function(scale) return function(n) return math.max(1, math.floor(n * (scale or 100) / 100 + 0.5)) end end,
+    fitText = function(options)
+        function options:getSize() return { w = self.width, h = math.min(self.max_h or 1000, self.size * 1.5) } end
+        return options
+    end,
 } end
 package.preload["ui/uimanager"] = function() return {
     show = function(_, dialog) shown = dialog end,
@@ -29,7 +34,23 @@ for _, name in ipairs({"buttondialog", "infomessage"}) do
         new = function(_, options) return options end,
     } end
 end
+for _, name in ipairs({"verticalgroup", "verticalspan", "linewidget"}) do
+    package.preload["ui/widget/" .. name] = function() return {
+        new = function(_, options) return options end,
+    } end
+end
+package.preload["ui/geometry"] = function() return {
+    new = function(_, options) return options end,
+} end
+local function contents(widget)
+    local lines = {}
+    for _, child in ipairs(widget) do
+        if child.text then lines[#lines + 1] = child.text end
+    end
+    return table.concat(lines, "\n")
+end
 local module = assert(loadfile(root .. "/kanban.lua"))(root)
+local function rendered(ctx) return contents(module.render(ctx)) end
 local function context(id)
     local values = { board_id = id }
     return { width = 240, scale = 100,
@@ -42,11 +63,11 @@ local function context(id)
 end
 local first, second = context("a"), context("b")
 assert(module.key == "kanban_board" and module.summary and module.keep_open)
-assert(module.render({ width = 100, scale = 100, preview = true }).text:find("Kanban"))
+assert(rendered({ width = 100, scale = 100, preview = true }):find("Kanban"))
 assert(reads == 0, "picker preview must not load board data")
-assert(module.render(first).text:find("Alpha"))
-local text = module.render(second).text
-assert(text:find("Beta") and text:find("Now: Pinned") and text:find("Task"))
+assert(rendered(first):find("Alpha"))
+local text = rendered(second)
+assert(text:find("Beta") and text:find("Now\nPinned") and text:find("Task"))
 assert(state.current_board == "a", "render must not select a board")
 module.show_settings(first)
 shown.buttons[2][1].callback()
@@ -70,7 +91,28 @@ table.remove(state.boards, 2)
 -- Tap forces a fresh read, so deletion cannot open a different board.
 module.on_tap(second)
 assert(shown.title == "Choose Kanban board")
-assert(module.render(second).text:find("Tap to choose"))
+assert(rendered(second):find("Tap to choose"))
 available = false
-assert(module.render(first).text:find("Enable Kanban"))
+assert(rendered(first):find("Enable Kanban"))
+available = true
+local board = state.boards[1]
+board.now_card = "p"
+board.cards = { p = { title = "Pinned title" }, a = { title = "Visible task" },
+    old = { title = "Archived task", archived = true } }
+board.columns = {{ name = "Doing", cards = { "missing", "old", "a", "a", "a", "a" } }}
+module.on_tap(first)
+local full = module.render(first)
+assert(full[1].opts.bold and full[1].size == 20)
+local rendered_text = contents(full)
+assert(rendered_text:find("Doing · 4") and rendered_text:find("+1 more"))
+assert(not rendered_text:find("Archived task"))
+for _, height in ipairs({1, 24, 60, 100, 240}) do
+    local ctx = context("a")
+    ctx.max_height = height
+    local used = 0
+    for _, child in ipairs(module.render(ctx)) do
+        used = used + (child.text and child:getSize().h or child.dimen and child.dimen.h or child.width or 0)
+    end
+    assert(used <= height, "layout must respect the available height")
+end
 print("Bookshelf module checks passed")
