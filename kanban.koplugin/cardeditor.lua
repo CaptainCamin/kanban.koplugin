@@ -52,6 +52,7 @@ function CardEditor:createInputs(title,notes)
             height=Screen:scaleBySize(definition.height),scroll=true,
             face=Font:getFace('cfont',index==1 and 22 or 18),
             focused=false,parent=self,margin=0,padding=Size.padding.small,
+            allow_newline=index==2,
             enter_callback=index==1 and function() self:onSwitchFocus(self.input_fields[2]) end or nil,
         }
     end
