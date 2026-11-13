@@ -7,17 +7,17 @@ local FrameContainer = require("ui/widget/container/framecontainer")
 local Geom = require("ui/geometry")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
-local InfoMessage = require("ui/widget/infomessage")
-local InputDialog = require("ui/widget/inputdialog")
 local InputContainer = require("ui/widget/container/inputcontainer")
 local Model = require("model")
 local ScrollableContainer = require("ui/widget/container/scrollablecontainer")
 local Size = require("ui/size")
 local Style = require("kanbanstyle")
+local KanbanButton = require("widgets/kanbanbutton")
+local KanbanDialog = require("widgets/kanbandialog")
+local KanbanTitleBar = require("widgets/kanbantitlebar")
 local LineWidget = require("ui/widget/linewidget")
 local TextBoxWidget = require("ui/widget/textboxwidget")
 local TextWidget = require("ui/widget/textwidget")
-local TitleBar = require("ui/widget/titlebar")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
@@ -67,7 +67,7 @@ function CardView:layout()
 
     self.dimen = Geom:new{ x = 0, y = 0, w = Screen:getWidth(), h = Screen:getHeight() }
     self.covers_fullscreen = true
-    self.title_bar = TitleBar:new{
+    self.title_bar = KanbanTitleBar:new{
         width = self.dimen.w,
         title = self.board_view:getBoard().name,
         title_face = Font:getFace("smallinfofontbold"),
@@ -97,7 +97,7 @@ function CardView:layout()
         if index > 1 then
             table.insert(control_row, HorizontalSpan:new{ width = control_gap })
         end
-        table.insert(control_row, Style.button{
+        table.insert(control_row, KanbanButton:new{
             text = action.text, callback = action.callback, width = control_width,
             text_font_face = "cfont", text_font_size = 18,
             bordersize = Style.border, radius = Style.radius,
@@ -193,7 +193,7 @@ function CardView:layout()
             local item_index = index
             local row = HorizontalGroup:new{
                 align = "top",
-                Style.button{
+                KanbanButton:new{
                     text = (item.done and "☑ " or "☐ ") .. item.text,
                     width = toggle_width,
                     height = Screen:scaleBySize(64),
@@ -211,7 +211,7 @@ function CardView:layout()
                     end,
                 },
                 HorizontalSpan:new{ width = item_gap },
-                Style.button{
+                KanbanButton:new{
                     text = _("…"), width = more_width,
                     height = Screen:scaleBySize(64),
                     bordersize = 0,
@@ -229,7 +229,7 @@ function CardView:layout()
         end
     end
     addSpace(content, Size.padding.small)
-    self.checklist_add_button = Style.button{
+    self.checklist_add_button = KanbanButton:new{
         text = _("+ Add checklist item"), width = content_width,
         text_font_face = "cfont", text_font_size = 18,
         bordersize = Style.border, background = Style.surface, radius = Style.radius,
@@ -274,7 +274,7 @@ end
 function CardView:showChecklistActions(item_index)
     local item = self:getCard().checklist[item_index]
     local dialog
-    dialog = Style.dialog{
+    dialog = KanbanDialog:new{
         title = item.text,
         buttons = {
             { { text = _("Edit"), callback = function()
@@ -306,7 +306,7 @@ function CardView:promptChecklistItem(item_index)
     local function save()
         local text = dialog:getInputText()
         if not hasText(text) then
-            UIManager:show(InfoMessage:new{
+            UIManager:show(KanbanDialog:new{
                 text = _("A checklist item needs text."),
                 timeout = 2,
             })
@@ -321,7 +321,7 @@ function CardView:promptChecklistItem(item_index)
             return Model.addChecklistItem(board, self.card_id, text)
         end)
     end
-    dialog = InputDialog:new{
+    dialog = KanbanDialog:new{
         title = item_index and _("Edit checklist item") or _("Add checklist item"),
         input = item_index and card.checklist[item_index].text or "",
         input_hint = _("Checklist item"),

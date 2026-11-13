@@ -1,7 +1,6 @@
 -- A single, draft-based workspace for all card fields. Nothing is saved until
 -- Save/Add; label and checklist changes remain local to this editor.
 local BB = require('ffi/blitbuffer')
-local ConfirmBox = require('ui/widget/confirmbox')
 local Device = require('device')
 local Font = require('ui/font')
 local Frame = require('ui/widget/container/framecontainer')
@@ -9,17 +8,17 @@ local Geom = require('ui/geometry')
 local GestureRange = require('ui/gesturerange')
 local HGroup = require('ui/widget/horizontalgroup')
 local HSpan = require('ui/widget/horizontalspan')
-local InfoMessage = require('ui/widget/infomessage')
 local InputContainer = require('ui/widget/container/inputcontainer')
-local InputDialog = require('ui/widget/inputdialog')
 local InputText = require('ui/widget/inputtext')
 local Model = require('model')
 local Scroll = require('ui/widget/container/scrollablecontainer')
 local Size = require('ui/size')
 local Style = require('kanbanstyle')
 local Text = require('ui/widget/textwidget')
-local TitleBar = require('ui/widget/titlebar')
 local UI = require('ui/uimanager')
+local KanbanButton = require('widgets/kanbanbutton')
+local KanbanDialog = require('widgets/kanbandialog')
+local KanbanTitleBar = require('widgets/kanbantitlebar')
 local VGroup = require('ui/widget/verticalgroup')
 local VSpan = require('ui/widget/verticalspan')
 local _ = require('gettext')
@@ -55,8 +54,8 @@ function CardEditor:createInputs(title,notes)
         self.input_fields[index]=InputText:new{
             text=definition.text,hint=definition.hint,width=width,
             height=Screen:scaleBySize(definition.height),scroll=true,
-            face=Font:getFace('cfont',index==1 and 22 or 18),
-            focused=false,parent=self,margin=0,padding=Size.padding.small,
+            face=index==1 and Style.font.display or Style.font.heading,
+            focused=false,parent=self,margin=0,padding=Style.space.sm,bordersize=Style.border,
             allow_newline=index==2,
             enter_callback=index==1 and function() self:onSwitchFocus(self.input_fields[2]) end or nil,
         }
@@ -97,7 +96,7 @@ function CardEditor:rebuild()
     end
     for _,label in ipairs(self.board.labels) do
         local id=label.id
-        local button=Style.button{
+        local button=KanbanButton:new{
             text=(self.selected_labels[id] and '☑ ' or '☐ ')..label.name,
             width=width,align='left',text_font_face='cfont',text_font_size=18,
             bordersize=self.selected_labels[id] and Style.border or 0,background=self.selected_labels[id] and Style.surface or BB.COLOR_WHITE,
@@ -112,7 +111,7 @@ function CardEditor:rebuild()
     for index,item in ipairs(self.checklist) do
         local n=index
         local action_width=Screen:scaleBySize(48)
-        local toggle=Style.button{
+        local toggle=KanbanButton:new{
             text=(item.done and '☑ ' or '☐ ')..item.text,
             width=width-2*action_width-2*gap,height=Screen:scaleBySize(52),align='left',
             text_font_face='cfont',text_font_size=18,text_font_bold=false,bordersize=0,show_parent=self,
@@ -120,13 +119,13 @@ function CardEditor:rebuild()
         }
         self.checklist_targets[n]=toggle
         table.insert(content,HGroup:new{align='center',toggle,HSpan:new{width=gap},
-            Style.button{text=_('Edit'),width=action_width,bordersize=0,text_font_size=16,show_parent=self,
+            KanbanButton:new{text=_('Edit'),width=action_width,bordersize=0,text_font_size=16,show_parent=self,
                 callback=function() self:promptChecklist(n) end},HSpan:new{width=gap},
-            Style.button{text=_('×'),width=action_width,bordersize=0,show_parent=self,
+            KanbanButton:new{text=_('×'),width=action_width,bordersize=0,show_parent=self,
                 callback=function() table.remove(self.checklist,n);self:refresh() end},
         })
     end
-    self.add_checklist_button=Style.button{
+    self.add_checklist_button=KanbanButton:new{
         text=_('+ Add checklist item'),width=width,bordersize=Style.border,background=Style.surface,
         text_font_face='cfont',text_font_size=18,show_parent=self,
         callback=function() self:promptChecklist() end,
@@ -134,7 +133,7 @@ function CardEditor:rebuild()
     table.insert(content,self.add_checklist_button)
     table.insert(content,VSpan:new{width=pad})
     local column=self.view:findColumn(self.column_id)
-    local bar=TitleBar:new{
+    local bar=KanbanTitleBar:new{
         width=self.dimen.w,title=self.card_id and _('Edit card') or _('New card'),
         subtitle=column and column.name or self.board.name,
         title_face=Font:getFace('smallinfofontbold'),with_bottom_line=true,
@@ -146,9 +145,9 @@ function CardEditor:rebuild()
         {text=save_text,callback=function() self:save() end},
     }}
     local footer=HGroup:new{align='center',
-        Style.button{text=_('Cancel'),width=math.floor(self.dimen.w/2),bordersize=0,
+        KanbanButton:new{text=_('Cancel'),width=math.floor(self.dimen.w/2),bordersize=0,
             text_font_size=18,show_parent=self,callback=self.buttons[1][1].callback},
-        Style.button{text=save_text,width=self.dimen.w-math.floor(self.dimen.w/2),bordersize=Style.border,
+        KanbanButton:new{text=save_text,width=self.dimen.w-math.floor(self.dimen.w/2),bordersize=Style.border,
             background=Style.surface,text_font_size=18,show_parent=self,callback=self.buttons[1][2].callback},
     }
     self.footer_actions={footer[1],footer[2]}
@@ -176,7 +175,7 @@ end
 function CardEditor:promptChecklist(index)
     self:onCloseKeyboard()
     local dialog
-    dialog=InputDialog:new{
+    dialog=KanbanDialog:new{
         title=index and _('Edit checklist item') or _('Add checklist item'),
         input=index and self.checklist[index].text or '',input_hint=_('Checklist item'),
         buttons={{
@@ -196,7 +195,7 @@ end
 function CardEditor:save()
     local fields=self:getFields()
     if not fields[1]:match('%S') then
-        UI:show(InfoMessage:new{text=_('A card needs a title.'),timeout=2});return false
+        UI:show(KanbanDialog:new{text=_('A card needs a title.'),timeout=2});return false
     end
     local labels={}
     for _,label in ipairs(self.board.labels) do if self.selected_labels[label.id] then labels[#labels+1]=label.id end end
@@ -233,7 +232,7 @@ end
 function CardEditor:requestClose()
     self:onCloseKeyboard()
     if not self:isChanged() then return self:close() end
-    UI:show(ConfirmBox:new{
+    UI:show(KanbanDialog:new{
         text=_('Discard your card changes?'),ok_text=_('Discard'),
         ok_callback=function() self:close() end,
     })

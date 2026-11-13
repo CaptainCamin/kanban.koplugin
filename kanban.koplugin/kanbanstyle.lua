@@ -1,43 +1,71 @@
--- Shared monochrome styling. Keep geometry scaled and contrast suitable for e-ink.
+-- Shared grayscale design tokens. Keep geometry scaled and contrast suitable for e-ink.
 local BB = require('ffi/blitbuffer')
 local Screen = require('device').screen
 local Font = require('ui/font')
 local Size = require('ui/size')
+
 local Style = {
     border = Screen:scaleBySize(1),
     radius = Screen:scaleBySize(6),
-    rule = BB.COLOR_BLACK,
-    muted = BB.COLOR_BLACK,
-    surface = BB.COLOR_WHITE,
+    radius_large = Screen:scaleBySize(10),
+    rule = BB.COLOR_GRAY_9,
+    muted = BB.COLOR_DARK_GRAY,
+    surface = BB.COLOR_GRAY_E,
+    paper = BB.COLOR_WHITE,
+
+    palette = {
+        paper = BB.COLOR_WHITE,
+        surface = BB.COLOR_GRAY_E,
+        raised = BB.COLOR_LIGHT_GRAY,
+        chip = BB.COLOR_GRAY_D,
+        rule = BB.COLOR_GRAY_9,
+        muted = BB.COLOR_DARK_GRAY,
+        ink = BB.COLOR_BLACK,
+        scrim = BB.COLOR_GRAY_2,
+        now = BB.COLOR_GRAY_D,
+        disabled = BB.COLOR_GRAY,
+    },
+
+    font = {
+        title = Font:getFace('cfont', 20),
+        display = Font:getFace('cfont', 22),
+        heading = Font:getFace('cfont', 18),
+        body = Font:getFace('cfont', 16),
+        small = Font:getFace('smallinfofont', 16),
+        caption = Font:getFace('xx_smallinfofont'),
+        bar = Font:getFace('smallinfofontbold'),
+    },
+
+    size = {
+        title = 20,
+        heading = 18,
+        body = 16,
+        small = 14,
+        caption = 12,
+    },
+
+    space = {
+        xs = Size.padding.tiny,
+        sm = Size.padding.small,
+        md = Size.padding.default,
+        lg = Size.padding.large,
+        xl = Screen:scaleBySize(16),
+    },
+
+    icon = {
+        size = Screen:scaleBySize(22),
+        touch = Screen:scaleBySize(36),
+    },
+
+    button = {
+        height = Screen:scaleBySize(36),
+        radius = Screen:scaleBySize(7),
+    },
 }
 
--- Native Button ties border color to its background; keep white fills with
--- black outlines without changing native input, feedback or disabled behavior.
-function Style.button(options)
-    local button = require('ui/widget/button'):new(options)
-    if options.bordersize and options.bordersize > 0 then button.frame.color = BB.COLOR_BLACK end
-    return button
-end
-
-function Style.dialog(options)
-    options.title_face = options.title_face or Font:getFace('cfont', 20)
-    options.title_padding = options.title_padding or Size.padding.large
-    if options.use_info_style == nil then options.use_info_style = false end
-    for _, row in ipairs(options.buttons or {}) do
-        for _, button in ipairs(row) do
-            button.font_face = button.font_face or 'cfont'
-            button.font_size = button.font_size or 20
-        end
-    end
-    local dialog = require('ui/widget/buttondialog'):new(options)
-    local function blackRules(widget)
-        if widget.background and (widget.background == BB.COLOR_GRAY or widget.background == BB.COLOR_DARK_GRAY) then
-            widget.background = BB.COLOR_BLACK
-        end
-        for _,child in ipairs(widget) do blackRules(child) end
-    end
-    blackRules(dialog)
-    return dialog
-end
+-- Compatibility aliases for older call sites while the migration lands.
+Style.rule = Style.palette.rule
+Style.muted = Style.palette.muted
+Style.surface = Style.palette.surface
 
 return Style

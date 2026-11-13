@@ -1,8 +1,8 @@
 -- Purpose-built Kanban action sheet. No ButtonDialog or ButtonTable layout.
--- Native Button supplies focus, touch feedback and activation; its contents are
+-- KanbanButton supplies touch feedback and activation; its contents are
 -- composed here so each action can have a title, supporting text and hierarchy.
 local BB = require('ffi/blitbuffer')
-local Button = require('ui/widget/button')
+local Button = require('widgets/kanbanbutton')
 local BottomContainer = require('ui/widget/container/bottomcontainer')
 local CenterContainer = require('ui/widget/container/centercontainer')
 local Device = require('device')

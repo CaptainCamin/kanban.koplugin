@@ -7,13 +7,11 @@ Every function takes the BoardView as `view`. Changes go through `Model` and
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
-local ConfirmBox = require("ui/widget/confirmbox")
 local Device = require("device")
 local Font = require("ui/font")
 local Style = require("kanbanstyle")
+local KanbanDialog = require("widgets/kanbandialog")
 local ActionPanel = require("actionpanel")
-local InfoMessage = require("ui/widget/infomessage")
-local InputDialog = require("ui/widget/inputdialog")
 local Model = require("model")
 local Markdown = require("markdown")
 local PathChooser = require("ui/widget/pathchooser")
@@ -79,7 +77,7 @@ local function safeBoardFilename(name)
 end
 
 local function showMarkdownError(message)
-    UIManager:show(InfoMessage:new{ text = message })
+    UIManager:show(KanbanDialog:new{ text = message })
 end
 
 local function writeExport(board, dir)
@@ -106,7 +104,7 @@ local function writeExport(board, dir)
         showMarkdownError(T(_("Could not export Markdown:\n%1"), tostring(err)))
         return
     end
-    UIManager:show(InfoMessage:new{
+    UIManager:show(KanbanDialog:new{
         text = T(_("Markdown exported to:\n%1"), path),
     })
 end
@@ -171,7 +169,7 @@ end
 -- A one-line text prompt (column and board names).
 local function promptName(args)
     local dialog
-    dialog = InputDialog:new{
+    dialog = KanbanDialog:new{
         title = args.title,
         input = args.value or "",
         input_hint = args.hint,
@@ -190,7 +188,7 @@ local function promptName(args)
                     callback = function()
                         local value = dialog:getInputText()
                         if not hasText(value) then
-                            UIManager:show(InfoMessage:new{
+                            UIManager:show(KanbanDialog:new{
                                 text = args.empty_text,
                                 timeout = 2,
                             })
@@ -225,7 +223,7 @@ function CardDialog.chooseLabels(board, selected, done)
         UIManager:close(dialog)
         done()
     end } }
-    dialog = showDialog(Style.dialog{
+    dialog = showDialog(KanbanDialog:new{
         title = #buttons == 1 and _("Create labels from the board menu first.") or _("Card labels"),
         buttons = buttons,
     })
@@ -250,7 +248,7 @@ function CardDialog.showLabels(view)
                 }
             end },
             { text = _("Delete"), callback = function()
-                UIManager:show(ConfirmBox:new{
+                UIManager:show(KanbanDialog:new{
                     text = T(_("Delete label “%1” from this board and all its cards?"), name),
                     ok_callback = function()
                         UIManager:close(dialog)
@@ -274,7 +272,7 @@ function CardDialog.showLabels(view)
         }
     end } }
     buttons[#buttons + 1] = { { text = _("Close"), callback = function() UIManager:close(dialog) end } }
-    dialog = showDialog(Style.dialog{ title = _("Board labels (tap to rename)"), buttons = buttons })
+    dialog = showDialog(KanbanDialog:new{ title = _("Board labels (tap to rename)"), buttons = buttons })
 end
 
 function CardDialog.filterLabels(view)
@@ -294,7 +292,7 @@ function CardDialog.filterLabels(view)
         buttons[#buttons + 1] = { { text = label.name, callback = function() filter(id) end } }
     end
     buttons[#buttons + 1] = { { text = _("Cancel"), callback = function() UIManager:close(dialog) end } }
-    dialog = showDialog(Style.dialog{ title = _("Filter by label"), buttons = buttons })
+    dialog = showDialog(KanbanDialog:new{ title = _("Filter by label"), buttons = buttons })
 end
 
 -- Card editor: a new card in `column_id`, or the existing card `card_id`.
@@ -332,7 +330,7 @@ function CardDialog.moveCardTo(view, card_id)
             UIManager:close(dialog)
         end,
     } })
-    dialog = showDialog(Style.dialog{
+    dialog = showDialog(KanbanDialog:new{
         title = T(_("Move “%1” to"), card.title),
         buttons = buttons,
     })
@@ -520,7 +518,7 @@ function CardDialog.showCardActions(view, card_id, organizing)
         }
     end
     if organizing then
-        dialog = Style.dialog{title=card.title, use_info_style=false, buttons=buttons}
+        dialog = KanbanDialog:new{title=card.title, use_info_style=false, buttons=buttons}
     else
         buttons[1][1].description = T(_("From %1"), column.name)
         buttons[2][1].description = next_column and _("Title, notes and labels") or _("Choose a destination")
@@ -569,7 +567,7 @@ function CardDialog.showColumnActions(view, column_id)
             CardDialog.showColumnActions(view, column_id)
         end
     end
-    dialog = showDialog(Style.dialog{
+    dialog = showDialog(KanbanDialog:new{
         title = T(N_("%1 · 1 card", "%1 · %2 cards", #column.cards), column.name, #column.cards),
         use_info_style = false,
         buttons = {
@@ -640,7 +638,7 @@ function CardDialog.showColumnActions(view, column_id)
                                 "Delete column “%1”?\n\nIts %2 cards will be moved to Archived cards.",
                                 #column.cards), column.name, #column.cards)
                         end
-                        UIManager:show(ConfirmBox:new{
+                        UIManager:show(KanbanDialog:new{
                             text = text,
                             ok_text = _("Delete"),
                             ok_callback = function()
@@ -684,7 +682,7 @@ function CardDialog.restoreCard(view, card_id, close_parent)
             UIManager:close(dialog)
         end,
     } })
-    dialog = showDialog(Style.dialog{
+    dialog = showDialog(KanbanDialog:new{
         title = T(_("Restore “%1” to"), card.title),
         buttons = buttons,
     })
@@ -693,11 +691,11 @@ end
 function CardDialog.showArchive(view)
     local board = view:getBoard()
     if #board.archived == 0 then
-        UIManager:show(InfoMessage:new{ text = _("No archived cards."), timeout = 2 })
+        UIManager:show(KanbanDialog:new{ text = _("No archived cards."), timeout = 2 })
         return
     end
     if #board.columns == 0 then
-        UIManager:show(InfoMessage:new{ text = _("Add a column first, to restore cards into it.") })
+        UIManager:show(KanbanDialog:new{ text = _("Add a column first, to restore cards into it.") })
         return
     end
     local dialog
@@ -723,7 +721,7 @@ function CardDialog.showArchive(view)
             UIManager:close(dialog)
         end,
     } })
-    dialog = showDialog(Style.dialog{
+    dialog = showDialog(KanbanDialog:new{
         title = T(_("Archived cards (%1)\nTap a card to restore it."), #board.archived),
         buttons = buttons,
     })
@@ -806,7 +804,7 @@ function CardDialog.showBoards(view)
                         "Delete board “%1” and all %2 of its cards, including archived ones?\n\nThis can't be undone.",
                         count), current.name, count)
                 end
-                UIManager:show(ConfirmBox:new{
+                UIManager:show(KanbanDialog:new{
                     text = text,
                     ok_text = _("Delete"),
                     ok_callback = function()
@@ -818,7 +816,7 @@ function CardDialog.showBoards(view)
             end),
         },
     })
-    dialog = showDialog(Style.dialog{
+    dialog = showDialog(KanbanDialog:new{
         title = _("Boards"),
         buttons = buttons,
     })

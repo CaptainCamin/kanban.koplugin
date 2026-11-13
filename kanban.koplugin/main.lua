@@ -2,12 +2,12 @@ local BoardView = require("boardview")
 local CardDialog = require("carddialog")
 local CardMove = require("cardmove")
 local Dispatcher = require("dispatcher")
-local InfoMessage = require("ui/widget/infomessage")
 local SleepScreen = require("sleepscreen")
 local Storage = require("storage")
 local Model = require("model")
 local TodayView = require("todayview")
 local UIManager = require("ui/uimanager")
+local KanbanDialog = require("widgets/kanbandialog")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local _ = require("gettext")
 
@@ -55,7 +55,7 @@ end
 function Kanban:onKanbanOpen(board_id, on_close)
     local state = Storage.load()
     if board_id and not Model.selectBoard(state, board_id) then
-        UIManager:show(InfoMessage:new{ text = _("This board no longer exists."), timeout = 2 })
+        UIManager:show(KanbanDialog:new{ text = _("This board no longer exists."), timeout = 2 })
         return true
     end
     -- Selecting a Bookshelf card must not change the last-opened board until tapped.
@@ -99,7 +99,7 @@ function Kanban:onKanbanAddCard()
     local board = view:getBoard()
     local column = board.columns[1]
     if not column then
-        UIManager:show(InfoMessage:new{
+        UIManager:show(KanbanDialog:new{
             text = _("This board has no columns."),
             timeout = 2,
         })
