@@ -51,6 +51,11 @@ local ok,err=xpcall(function()
     local notes=editor.input_fields[2].dimen
     assert(notes.y >= crop.y and notes.y+notes.h <= crop.y+crop.h,
         'focused notes must be visible above keyboard')
+    assert(editor.is_always_active,'editor must stay reachable below the modal keyboard')
+    UI:sendEvent(Event:new('Gesture',{ges='tap',pos=Geom:new{x=Screen:getWidth()/2,y=Screen:scaleBySize(8)}}))
+    assert(not editor._input_widget:isKeyboardVisible(),'tap outside keyboard must dismiss it')
+    assert(top()==editor,'editor must remain after dismissing keyboard')
+    assert(not editor.is_always_active,'editor must stop intercepting events once keyboard is gone')
     editor:onCloseKeyboard()
     assert(editor:save())
     local id=board.columns[1].cards[1]
