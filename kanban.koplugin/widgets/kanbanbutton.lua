@@ -69,7 +69,7 @@ function KanbanButton:init()
     self.padding_h = self.padding_h or self.padding or Style.space.sm
     self.padding_v = self.padding_v or self.padding or Style.space.xs
     self.enabled = self.enabled ~= false
-    self._base_enabled = self.enabled
+    self._base_enabled = self._base_enabled or self.enabled
 
     local display_text = self.text or ""
 
@@ -281,6 +281,9 @@ function KanbanButton:refresh()
     if self.checked_func then
         if self.text_func then self.text = self.text_func() end
         self:free()
+        if self.leading_widget and self.leading_widget.checkable ~= nil then
+            self.leading_widget = nil
+        end
         self:init()
     elseif self.text_func then
         self:setText(self.text_func())
