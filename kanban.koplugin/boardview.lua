@@ -1,6 +1,5 @@
 local BD = require("ui/bidi")
 local Blitbuffer = require("ffi/blitbuffer")
-local ButtonDialog = require("ui/widget/buttondialog")
 local CardDialog = require("carddialog")
 local CardView = require("cardview")
 local CardMove = require("cardmove")
@@ -13,7 +12,6 @@ local GestureRange = require("ui/gesturerange")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
 local ImageWidget = require("ui/widget/imagewidget")
-local InfoMessage = require("ui/widget/infomessage")
 local InputContainer = require("ui/widget/container/inputcontainer")
 local LeftContainer = require("ui/widget/container/leftcontainer")
 local LineWidget = require("ui/widget/linewidget")
@@ -23,9 +21,11 @@ local RightContainer = require("ui/widget/container/rightcontainer")
 local Size = require("ui/size")
 local Storage = require("storage")
 local Style = require("kanbanstyle")
+local KanbanButton = require("widgets/kanbanbutton")
+local KanbanDialog = require("widgets/kanbandialog")
+local KanbanTitleBar = require("widgets/kanbantitlebar")
 local TextBoxWidget = require("ui/widget/textboxwidget")
 local TextWidget = require("ui/widget/textwidget")
-local TitleBar = require("ui/widget/titlebar")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
@@ -111,7 +111,7 @@ local function cardMarkerText(card)
                 done = done + 1
             end
         end
-        table.insert(markers, T(_("☑ %1/%2"), done, #checklist))
+        table.insert(markers, T(_("Done %1/%2"), done, #checklist))
     end
     local days = Model.daysInColumn(card.moved, os.time)
     if days then
@@ -170,11 +170,10 @@ function BoardView:layout(changed_columns)
         changed_columns = nil
     end
     local filter = self.label_filter and Model.findLabel(board, self.label_filter)
-    self.title_bar = changed_columns and self.title_bar or TitleBar:new{
+    self.title_bar = changed_columns and self.title_bar or KanbanTitleBar:new{
         width = self.dimen.w,
         align = "center",
-        -- The title is the board switcher: the ▼ marks it as tappable.
-        title = board and (board.name .. " ▼") or _("Kanban board"),
+        title = board and board.name or _("Kanban board"),
         title_face = Font:getFace("smallinfofontbold"),
         with_bottom_line = true,
         bottom_line_color = Blitbuffer.COLOR_BLACK,
@@ -213,14 +212,14 @@ function BoardView:layout(changed_columns)
     if filter then
         local strip_height = Screen:scaleBySize(32)
         local clear_width = Screen:scaleBySize(84)
-        local filter_button = Style.button{
+        local filter_button = KanbanButton:new{
             text=T(_("Label: %1"),filter.name),width=self.dimen.w-2*outer-clear_width,
             height=strip_height-2*Size.padding.small,padding_v=Size.padding.small,align="left",
             text_font_face="cfont",text_font_size=16,bordersize=0,show_parent=self,
             callback=function() CardDialog.filterLabels(self) end,
         }
-        self.filter_clear_button = Style.button{
-            text=_("× Clear"),width=clear_width,height=strip_height-2*Size.padding.small,padding_v=Size.padding.small,
+        self.filter_clear_button = KanbanButton:new{
+            text=_("Clear"),width=clear_width,height=strip_height-2*Size.padding.small,padding_v=Size.padding.small,
             text_font_face="cfont",text_font_size=16,bordersize=0,show_parent=self,
             callback=function()
                 self.label_filter=nil;self.card_start={};self:refresh()
@@ -470,7 +469,7 @@ function BoardView:buildColumns(board, first, last, body_h, changed_columns)
                     + 2 * (card_border + card_pad)
             end
             local add_card_lines, add_card_glyph_extra_height = measureTitleLines(
-                _("+ Add card"), text_w, title_face)
+                _("Add card"), text_w, title_face)
             local add_card_height = add_card_lines * line_h + add_card_glyph_extra_height
                 + 2 * (card_border + card_pad)
             -- Reserve the same creation control on every page, so capturing a
@@ -656,7 +655,7 @@ function BoardView:buildColumns(board, first, last, body_h, changed_columns)
                     padding = card_pad,
                     background = Style.surface,
                     TextBoxWidget:new{
-                        text = _("+ Add card"),
+                        text = _("Add card"),
                         bgcolor = Blitbuffer.COLOR_WHITE,
                         face = title_face,
                         width = text_w,
@@ -720,7 +719,7 @@ function BoardView:buildFooter(board, first, last)
     self.tab_targets = {}
 
     local function addChevron(icon, enabled, callback, width)
-        local button = Style.button{
+        local button = KanbanButton:new{
             icon = icon,
             icon_width = Screen:scaleBySize(20),
             icon_height = Screen:scaleBySize(20),
@@ -747,7 +746,7 @@ function BoardView:buildFooter(board, first, last)
             { text = _("Archive"), callback = function() self:changeSelection() end },
             { text = _("Cancel"), enabled = true, callback = function() self:setSelectMode(false) end },
         }) do
-            local button = Style.button{
+            local button = KanbanButton:new{
                 text = action.text, callback = action.callback,
                 width = math.floor(row_width / 4),
                 height = row_height - 2 * (Size.padding.small + Size.border.button),
@@ -770,7 +769,7 @@ function BoardView:buildFooter(board, first, last)
         local arrow_width = show_all_tabs and 0 or Screen:scaleBySize(40)
         local tab_space = row_width - 2 * arrow_width
         local tab_width = math.floor(tab_space / tab_count)
-        local tab_font = Font:getFace("smallinfofont", 16)
+        local tab_font = Style.font.small
         local tab_padding_h = Size.padding.small
         local tab_inner_padding = tab_padding_h + Size.border.button
         local count_gap = Screen:scaleBySize(8)
@@ -805,10 +804,10 @@ function BoardView:buildFooter(board, first, last)
             if truncated then
                 name = name .. "…"
             end
-            local tab = Style.button{
+            local tab = KanbanButton:new{
                 text = name .. " " .. count_text,
                 text_font_face = "smallinfofont",
-                text_font_size = 16,
+                text_font_size = Style.size.body,
                 text_font_bold = true,
                 avoid_text_truncation = false,
                 width = this_width,
@@ -816,7 +815,7 @@ function BoardView:buildFooter(board, first, last)
                 padding_h = tab_padding_h,
                 padding_v = Size.padding.small,
                 bordersize = 0,
-                background = Blitbuffer.COLOR_WHITE,
+                background = Style.palette.paper,
                 preselect = index >= first and index <= last,
                 radius = Style.radius,
                 callback = function()
@@ -1070,7 +1069,7 @@ function BoardView:showSelectionMove()
         } })
     end
     table.insert(buttons, { { text = _("Cancel"), callback = function() UIManager:close(dialog) end } })
-    dialog = ButtonDialog:new{ title = _("Move to…"), buttons = buttons }
+    dialog = KanbanDialog:new{ title = _("Move to…"), buttons = buttons }
     UIManager:show(dialog)
 end
 
@@ -1087,7 +1086,7 @@ function BoardView:commit(change, after, refresh_type, undo_message, defer_undo_
     local ok, err = change()
     if not ok then
         logger.warn("kanban: change rejected:", err)
-        UIManager:show(InfoMessage:new{ text = T(_("Could not change the board: %1"), tostring(err)) })
+        UIManager:show(KanbanDialog:new{ text = T(_("Could not change the board: %1"), tostring(err)) })
         return false
     end
     local current_board = self:getBoard()
@@ -1128,7 +1127,7 @@ function BoardView:undo()
     local ok, err = Model.restoreBoard(self.state, undo.board)
     if not ok then
         logger.warn("kanban: undo failed:", err)
-        UIManager:show(InfoMessage:new{ text = T(_("Could not undo the change: %1"), tostring(err)) })
+        UIManager:show(KanbanDialog:new{ text = T(_("Could not undo the change: %1"), tostring(err)) })
         return false
     end
     self.state.undo = nil
@@ -1150,7 +1149,7 @@ function BoardView:showUndoMessage()
     end
     local dialog
     local timeout
-    dialog = ButtonDialog:new{
+    dialog = KanbanDialog:new{
         title = undo.message or _("Change made"),
         modal = true,
         buttons = { {

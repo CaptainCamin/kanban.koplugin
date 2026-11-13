@@ -1,8 +1,8 @@
 -- Purpose-built Kanban action sheet. No ButtonDialog or ButtonTable layout.
--- Native Button supplies focus, touch feedback and activation; its contents are
+-- KanbanButton supplies touch feedback and activation; its contents are
 -- composed here so each action can have a title, supporting text and hierarchy.
 local BB = require('ffi/blitbuffer')
-local Button = require('ui/widget/button')
+local Button = require('widgets/kanbanbutton')
 local BottomContainer = require('ui/widget/container/bottomcontainer')
 local CenterContainer = require('ui/widget/container/centercontainer')
 local Device = require('device')
@@ -95,7 +95,8 @@ function ActionPanel:init()
         height_overflow_show_ellipsis=true,
     })
     local close = Button:new{
-        text=_('×'), width=Screen:scaleBySize(32), height=Screen:scaleBySize(36),
+        icon='close', icon_width=Style.icon.size, icon_height=Style.icon.size,
+        width=Screen:scaleBySize(32), height=Screen:scaleBySize(36),
         bordersize=0, padding=0, text_font_size=26, show_parent=self,
         callback=function() self:onClose() end,
     }

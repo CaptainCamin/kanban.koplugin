@@ -10,9 +10,10 @@ local Model = require("model")
 local ScrollableContainer = require("ui/widget/container/scrollablecontainer")
 local Size = require("ui/size")
 local Style = require("kanbanstyle")
+local KanbanButton = require("widgets/kanbanbutton")
+local KanbanTitleBar = require("widgets/kanbantitlebar")
 local Storage = require("storage")
 local TextWidget = require("ui/widget/textwidget")
-local TitleBar = require("ui/widget/titlebar")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
@@ -36,7 +37,7 @@ function TodayView:layout()
     self.dimen = Geom:new{ x = 0, y = 0, w = Screen:getWidth(), h = Screen:getHeight() }
     self.covers_fullscreen = true
 
-    self.title_bar = TitleBar:new{
+    self.title_bar = KanbanTitleBar:new{
         width = self.dimen.w,
         title = _("Today"),
         title_face = Font:getFace("smallinfofontbold"),
@@ -88,7 +89,7 @@ function TodayView:layout()
                 local card = board.cards[card_id]
                 local selected_board, selected_column = board, column
                 local selected_card_id, selected_index = card_id, index
-                table.insert(section, Style.button{
+                table.insert(section, KanbanButton:new{
                     text = card.title,
                     width = card_width,
                     height = Screen:scaleBySize(52),

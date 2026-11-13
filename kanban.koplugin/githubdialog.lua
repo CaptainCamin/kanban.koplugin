@@ -1,9 +1,6 @@
-local ButtonDialog = require('ui/widget/buttondialog')
-local ConfirmBox = require('ui/widget/confirmbox')
-local InfoMessage = require('ui/widget/infomessage')
-local InputDialog = require('ui/widget/inputdialog')
 local TextViewer = require('ui/widget/textviewer')
 local UI = require('ui/uimanager')
+local KanbanDialog = require('widgets/kanbandialog')
 local Model = require('model')
 local GitHub = require('github')
 local Store = require('githubstore')
@@ -12,7 +9,7 @@ local T = require('ffi/util').template
 local Dialog = {}
 local publishing = false
 
-local function message(text) UI:show(InfoMessage:new{text=text}) end
+local function message(text) UI:show(KanbanDialog:new{text=text}) end
 local function openStore()
     local ok, data, save = pcall(Store.open)
     if not ok then
@@ -24,7 +21,7 @@ end
 
 local function prompt(title, value, callback, password)
     local dialog
-    dialog = InputDialog:new{
+    dialog = KanbanDialog:new{
         title=title, input=value or '', text_type=password and 'password' or nil,
         buttons={{
             {text=_("Cancel"), callback=function() UI:close(dialog) end},
@@ -47,7 +44,7 @@ local function list(title, items, footer, page)
     local buttons = {}
     for index=(page-1)*5+1, math.min(page*5, #items) do
         local item = items[index]
-        buttons[#buttons+1] = {{text=item.text, callback=function()
+        buttons[#buttons+1] = {{text=item.text, checked_func=item.checked_func, callback=function()
             if not item.keep_open then UI:close(dialog) end
             item.callback()
         end}}
@@ -64,7 +61,7 @@ local function list(title, items, footer, page)
     end
     for _, row in ipairs(footer or {}) do buttons[#buttons+1]=row end
     buttons[#buttons+1] = {{text=_("Close"), callback=function() UI:close(dialog) end}}
-    dialog = ButtonDialog:new{title=title, buttons=buttons}
+    dialog = KanbanDialog:new{title=title, buttons=buttons}
     UI:show(dialog)
 end
 
@@ -84,7 +81,10 @@ local function chooseLabels(view)
     for label_index, label in ipairs(board.labels or {}) do
         local id, name = label.id, label.name
         local selected = (config.upload_labels or {})[id]
-        items[#items+1] = {text=(selected and "☑ " or "☐ ") .. name, callback=function()
+        items[#items+1] = {text=name, checked_func=function()
+            local upload = ((view:getBoard().github or {}).upload_labels) or {}
+            return upload[id] == true
+        end, callback=function()
             view:commit(function()
                 board.github = board.github or {}
                 board.github.upload_labels = board.github.upload_labels or {}
@@ -165,7 +165,7 @@ local function runBatch(view, candidates, data, save)
             local candidate = candidates[index]
             if not candidate then finish(); return end
             if progress then UI:close(progress) end
-            progress = ButtonDialog:new{
+            progress = KanbanDialog:new{
                 title=T(_("Publishing card %1 of %2"), index, #candidates),
                 buttons={{{text=_("Stop after current card"), callback=function() cancelled=true end}}},
             }
@@ -194,6 +194,7 @@ function Dialog.preview(view)
     for candidate_index, candidate in ipairs(candidates) do
         local card = candidate
         items[#items+1] = {keep_open=true, text=(card.recovering and _("Check previous upload: ") or '') .. card.title, callback=function()
+            UI:close(dialog)
             UI:show(TextViewer:new{
                 title=card.title,
                 text=T(_("Repository: %1\nGitHub labels: %2\n\n%3"), card.repository,
@@ -203,7 +204,7 @@ function Dialog.preview(view)
     end
     list(T(_("Ready to publish: %1 cards → %2"), #candidates, candidates[1].repository), items, {{
         {text=_("Publish batch"), callback=function()
-            UI:show(ConfirmBox:new{
+            UI:show(KanbanDialog:new{
                 text=T(_("Create GitHub issues for these %1 cards in %2? Published issues cannot be undone from the board."), #candidates, candidates[1].repository),
                 ok_text=_("Publish"), ok_callback=function() runBatch(view, candidates, data, save) end,
             })
@@ -223,7 +224,7 @@ function Dialog.show(view)
     if not data then return end
     local dialog
     local function action(fn) return function() UI:close(dialog); fn() end end
-    dialog = ButtonDialog:new{
+    dialog = KanbanDialog:new{
         title=_("GitHub issues"),
         buttons={
             {{text=T(_("Repository: %1"), config.repository or _("Not connected")), callback=action(function()

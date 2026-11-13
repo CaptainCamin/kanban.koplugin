@@ -253,7 +253,7 @@ class Koreader:
     def dismiss_startup(self) -> None:
         for _ in range(8):
             top = self.top_widget()
-            if not top or top[1] not in {"InfoMessage", "ConfirmBox", "ButtonDialog", "ActionPanel"}:
+            if not top or top[1] not in {"KanbanDialog", "ActionPanel", "InfoMessage", "ConfirmBox", "ButtonDialog"}:
                 return
             self.key("Escape")
             time.sleep(0.4)
@@ -318,7 +318,7 @@ class Koreader:
             top = self.top_widget()
             if not top or top[1] not in classes:
                 return top
-            if top[1] in {"ButtonDialog", "ActionPanel"}:
+            if top[1] in {"KanbanDialog", "ActionPanel", "ButtonDialog"}:
                 self.tap(5, 5)  # outside the movable dialog closes it without choosing a button
             else:
                 self.key("Escape")
@@ -480,6 +480,17 @@ class Koreader:
                         if isinstance(dimen, dict):
                             return idx, cls, dimen
                 return None
+            if cls in {"KanbanDialog", "ButtonDialog", "ConfirmBox", "InfoMessage", "InputDialog"}:
+                for index in range(1, 80):
+                    prefix = f"button_widgets/{index}"
+                    label = self.widget_get(idx, f"{prefix}/text", allow404=True)
+                    if label is None:
+                        break
+                    label = str(label).strip()
+                    if label == text or text.lower() in label.lower():
+                        dimen = self.widget_get(idx, f"{prefix}/dimen", allow404=True)
+                        if isinstance(dimen, dict) and all(k in dimen for k in ("x", "y", "w", "h")):
+                            return idx, cls, dimen
             for base in ("buttontable", "button_table"):
                 for row in range(1, 30):
                     for col in range(1, 8):
@@ -748,7 +759,7 @@ def main() -> int:
             ko.wait_class("CardEditor", timeout=8)
             ko.type_text("Smoke gesture card")
             ko.click_dialog_button("Add")
-            ko.wait_for(lambda: ko.find_widget("CardEditor") is None and ko.find_widget("InputDialog") is None,
+            ko.wait_for(lambda: ko.find_widget("CardEditor") is None and ko.find_widget("KanbanDialog") is None,
                         timeout=8, desc="add-card dialog closed")
             ko.broadcast("KanbanOpen")
             ko.wait_for(lambda: ko.find_widget("BoardView") is not None, timeout=8, desc="board after add")
@@ -775,23 +786,23 @@ def main() -> int:
             try:
                 # Resolve the real painted control; its position depends on content.
                 card_index = ko.find_widget("CardView")
-                add = ko.get_json(f"/UIManager/_window_stack/{card_index}/widget/checklist_add_button/dimen/")
+                add = ko.get_json(f"/UIManager/_window_stack/{card_index}/widget/checklist_add_button/dimen")
                 ko.tap(add["x"] + add["w"] / 2, add["y"] + add["h"] / 2)
-                ko.wait_class("InputDialog", timeout=8)
+                ko.wait_class("KanbanDialog", timeout=8)
                 ko.type_text("Smoke added item")
                 ko.click_dialog_button("Add")
                 ko.wait_for(lambda: ko.find_widget("CardView") is not None, timeout=8, desc="CardView after add item")
                 card = ko.card(ko.board(), "k2")
                 texts = [i.get("text") for i in card.get("checklist", [])]
                 assert "Smoke added item" in texts, f"checklist item missing: {texts}"
-                row = ko.get_json(f"/UIManager/_window_stack/{card_index}/widget/checklist_targets/1/dimen/")
+                row = ko.get_json(f"/UIManager/_window_stack/{card_index}/widget/checklist_targets/1/dimen")
                 ko.tap(row["x"] + row["w"] / 2, row["y"] + row["h"] / 2)
                 ko.wait_for(lambda: ko.card(ko.board(), "k2").get("checklist", [{}])[0].get("done") is True,
                             timeout=3, desc="first checklist item toggled")
             finally:
                 for _ in range(3):
                     top = ko.top_widget()
-                    if not top or top[1] not in {"InputDialog", "MultiInputDialog", "ButtonDialog", "ActionPanel", "ConfirmBox", "InfoMessage"}:
+                    if not top or top[1] not in {"KanbanDialog", "InputDialog", "MultiInputDialog", "ButtonDialog", "ActionPanel", "ConfirmBox", "InfoMessage"}:
                         break
                     ko.key("Escape")
                     time.sleep(0.2)
@@ -817,7 +828,7 @@ def main() -> int:
                 return ko.column(ko.board(), "To Do")["cards"][:3]
             ko.wait_for(lambda: order() == ["k2", "k1", "k3"], timeout=8, desc="within-column move")
             # The move pops a modal Undo prompt; close it without undoing so the board is draggable again.
-            ko.dismiss_dialogs({"ButtonDialog", "ActionPanel"}, timeout=8)
+            ko.dismiss_dialogs({"KanbanDialog", "ActionPanel", "ButtonDialog"}, timeout=8)
             # Edge paging: hold k2 at the bottom edge long enough for the plugin's 0.8s page timer.
             idx = ko.board_index()
             cols = {c["id"]: c for c in ko.column_rects(idx)}
@@ -903,7 +914,7 @@ def main() -> int:
             ko.wait_for(lambda: md.exists(), timeout=8, desc="markdown export file")
             text = md.read_text()
             assert "# Smoke board" in text and "Smoke first card" in text, "export missing expected Markdown"
-            ko.dismiss_dialogs({"InfoMessage"}, timeout=5)
+            ko.dismiss_dialogs({"KanbanDialog", "InfoMessage"}, timeout=5)
             before_import_id = ko.board().get("id")
             ko.open_board_menu()
             ko.click_dialog_button("Import / export…")
@@ -932,7 +943,7 @@ def main() -> int:
             # Board may be behind dialogs after markdown; return to FileManager first.
             for _ in range(4):
                 top = ko.top_widget()
-                if not top or top[1] not in {"ButtonDialog", "ActionPanel", "InfoMessage", "InputDialog", "MultiInputDialog", "PathChooser"}:
+                if not top or top[1] not in {"KanbanDialog", "ButtonDialog", "ActionPanel", "InfoMessage", "InputDialog", "MultiInputDialog", "PathChooser"}:
                     break
                 ko.key("Escape")
                 time.sleep(0.3)
