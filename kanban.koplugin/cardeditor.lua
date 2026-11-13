@@ -6,6 +6,7 @@ local Device = require('device')
 local Font = require('ui/font')
 local Frame = require('ui/widget/container/framecontainer')
 local Geom = require('ui/geometry')
+local GestureRange = require('ui/gesturerange')
 local HGroup = require('ui/widget/horizontalgroup')
 local HSpan = require('ui/widget/horizontalspan')
 local InfoMessage = require('ui/widget/infomessage')
@@ -38,6 +39,10 @@ function CardEditor:init()
     self:createInputs(self.original.title,self.original.notes)
     self._input_widget=self.input_fields[1];self._input_widget:focus()
     self:rebuild()
+    self.ges_events.Tap = { GestureRange:new{
+        ges = 'tap',
+        range = function() return Geom:new{x=0,y=0,w=Screen:getWidth(),h=Screen:getHeight()} end,
+    } }
     if Device:hasKeys() then self.key_events.Close={{Device.input.group.Back}} end
 end
 function CardEditor:createInputs(title,notes)
@@ -240,6 +245,15 @@ function CardEditor:close()
 end
 function CardEditor:onClose() return self:requestClose() end
 function CardEditor:onCloseDialog() return self:requestClose() end
+function CardEditor:onTap(_, ges)
+    local input = self._input_widget
+    if not (input and input:isKeyboardVisible()) then return false end
+    local keyboard = input.keyboard
+    if keyboard and keyboard.dimen and ges.pos and ges.pos:notIntersectWith(keyboard.dimen) then
+        self:onCloseKeyboard()
+    end
+    return true
+end
 function CardEditor:onSwitchFocus(input)
     if self._input_widget and self._input_widget~=input then
         self._input_widget:onCloseKeyboard();self._input_widget:unfocus()
@@ -252,6 +266,8 @@ function CardEditor:onShowKeyboard()
     if not ((Device:hasKeyboard() or Device:hasScreenKB()) and G_reader_settings:nilOrFalse('virtual_keyboard_enabled')) then
         self._input_widget:onShowKeyboard()
     end
+    -- The modal keyboard only forwards unconsumed events to always-active widgets.
+    self.is_always_active=self._input_widget:isKeyboardVisible()
     self:refresh()
     UI:forceRePaint()
     local input=self._input_widget.dimen
@@ -265,9 +281,10 @@ end
 function CardEditor:onCloseKeyboard()
     local visible=self._input_widget and self._input_widget:isKeyboardVisible()
     if self._input_widget then self._input_widget:onCloseKeyboard() end
+    self.is_always_active=false
     if visible and not self.closed then self:refresh() end
 end
-function CardEditor:onKeyboardClosed() self:refresh() end
+function CardEditor:onKeyboardClosed() self.is_always_active=false;self:refresh() end
 function CardEditor:onKeyboardHeightChanged() self:refresh() end
 function CardEditor:onScreenResize()
     local fields=self:getFields()
