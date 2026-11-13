@@ -213,7 +213,7 @@ function CardView:layout()
                 },
                 HorizontalSpan:new{ width = item_gap },
                 KanbanButton:new{
-                    icon = "chevron.right", icon_width = Style.icon.size, icon_height = Style.icon.size,
+                    icon = "appbar.tools", icon_width = Style.icon.size, icon_height = Style.icon.size,
                     width = more_width,
                     height = Screen:scaleBySize(64),
                     bordersize = 0,

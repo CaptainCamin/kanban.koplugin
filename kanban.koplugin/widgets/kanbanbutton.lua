@@ -179,6 +179,11 @@ function KanbanButton:enableDisable(enabled)
     if self.leading_widget and self.leading_widget.dim ~= nil then
         self.leading_widget.dim = not self.enabled
     end
+    if self.leading_widget and self.leading_widget.checkable ~= nil then
+        self.leading_widget.enabled = self.enabled
+        self.leading_widget:free()
+        self.leading_widget:init()
+    end
 end
 
 function KanbanButton:enable() self:enableDisable(true) end
@@ -273,7 +278,13 @@ function KanbanButton:getMinNeededWidth()
 end
 
 function KanbanButton:refresh()
-    if self.text_func then self:setText(self.text_func()) end
+    if self.checked_func then
+        if self.text_func then self.text = self.text_func() end
+        self:free()
+        self:init()
+    elseif self.text_func then
+        self:setText(self.text_func())
+    end
 end
 
 return KanbanButton
