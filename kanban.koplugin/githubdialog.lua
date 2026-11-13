@@ -191,6 +191,7 @@ function Dialog.preview(view)
     for candidate_index, candidate in ipairs(candidates) do
         local card = candidate
         items[#items+1] = {keep_open=true, text=(card.recovering and _("Check previous upload: ") or '') .. card.title, callback=function()
+            UI:close(dialog)
             UI:show(TextViewer:new{
                 title=card.title,
                 text=T(_("Repository: %1\nGitHub labels: %2\n\n%3"), card.repository,

@@ -19,7 +19,7 @@ local _ = require('gettext')
 local Screen = Device.screen
 local KanbanButton = require('widgets/kanbanbutton')
 
-local KanbanDialog = InputContainer:extend{covers_fullscreen = true}
+local KanbanDialog = InputContainer:extend{covers_fullscreen = true, is_always_active = true}
 
 local function hasText(value)
     return type(value) == "string" and value:match("%S") ~= nil
@@ -43,13 +43,24 @@ function KanbanDialog:init()
                 if cancel_callback then cancel_callback() end
                 UIManager:close(self)
             end },
-            { text = self.ok_text, callback = function()
+            { text = self.ok_text, is_enter_default = true, callback = function()
                 if ok_callback then ok_callback() end
                 UIManager:close(self)
             end },
         }}
     end
     self.buttons = self.buttons or {}
+    if self.enter_callback == nil and not self.allow_newline then
+        for _, row in ipairs(self.buttons) do
+            for _, definition in ipairs(row) do
+                if definition.is_enter_default and definition.callback then
+                    self.enter_callback = definition.callback
+                    break
+                end
+            end
+            if self.enter_callback then break end
+        end
+    end
 
     local has_input = self.input ~= nil or self.input_hint ~= nil or self.input_type ~= nil or self.text_type ~= nil
     if has_input then
@@ -267,6 +278,7 @@ function KanbanDialog:getAddedWidgetAvailableWidth()
     return self.content_width or (self.width - 2 * Style.space.lg - 2 * Style.border)
 end
 
+function KanbanDialog:getFocusableWidgetXY() return nil, nil end
 function KanbanDialog:getInputText()
     return self.input_widget and self.input_widget:getText() or ""
 end
