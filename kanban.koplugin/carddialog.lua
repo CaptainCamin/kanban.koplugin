@@ -211,7 +211,8 @@ function CardDialog.chooseLabels(board, selected, done)
     for label_index, label in ipairs(board.labels or {}) do
         local id = label.id
         buttons[#buttons + 1] = { {
-            text = (selected[id] and "☑ " or "☐ ") .. label.name,
+            text = label.name,
+            checked_func = function() return selected[id] end,
             callback = function()
                 selected[id] = not selected[id] or nil
                 UIManager:close(dialog)

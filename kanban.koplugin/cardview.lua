@@ -194,7 +194,8 @@ function CardView:layout()
             local row = HorizontalGroup:new{
                 align = "top",
                 KanbanButton:new{
-                    text = (item.done and "☑ " or "☐ ") .. item.text,
+                    text = item.text,
+                    checked_func = function() return item.done end,
                     width = toggle_width,
                     height = Screen:scaleBySize(64),
                     bordersize = 0,
@@ -212,10 +213,10 @@ function CardView:layout()
                 },
                 HorizontalSpan:new{ width = item_gap },
                 KanbanButton:new{
-                    text = _("…"), width = more_width,
+                    icon = "chevron.right", icon_width = Style.icon.size, icon_height = Style.icon.size,
+                    width = more_width,
                     height = Screen:scaleBySize(64),
                     bordersize = 0,
-                    text_font_size = 20,
                     show_parent = self,
                     callback = function() self:showChecklistActions(item_index) end,
                 },
@@ -230,7 +231,7 @@ function CardView:layout()
     end
     addSpace(content, Size.padding.small)
     self.checklist_add_button = KanbanButton:new{
-        text = _("+ Add checklist item"), width = content_width,
+        text = _("Add checklist item"), leading_icon = "plus", width = content_width,
         text_font_face = "cfont", text_font_size = 18,
         bordersize = Style.border, background = Style.surface, radius = Style.radius,
         show_parent = self, callback = function() self:promptChecklistItem() end,

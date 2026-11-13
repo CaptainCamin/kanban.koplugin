@@ -97,7 +97,8 @@ function CardEditor:rebuild()
     for _,label in ipairs(self.board.labels) do
         local id=label.id
         local button=KanbanButton:new{
-            text=(self.selected_labels[id] and '☑ ' or '☐ ')..label.name,
+            text=label.name,
+            checked_func=function() return self.selected_labels[id] end,
             width=width,align='left',text_font_face='cfont',text_font_size=18,
             bordersize=self.selected_labels[id] and Style.border or 0,background=self.selected_labels[id] and Style.surface or BB.COLOR_WHITE,
             show_parent=self,callback=function() self:toggleLabel(id) end,
@@ -112,7 +113,8 @@ function CardEditor:rebuild()
         local n=index
         local action_width=Screen:scaleBySize(48)
         local toggle=KanbanButton:new{
-            text=(item.done and '☑ ' or '☐ ')..item.text,
+            text=item.text,
+            checked_func=function() return self.checklist[n].done end,
             width=width-2*action_width-2*gap,height=Screen:scaleBySize(52),align='left',
             text_font_face='cfont',text_font_size=18,text_font_bold=false,bordersize=0,show_parent=self,
             callback=function() self.checklist[n].done=not self.checklist[n].done;self:refresh() end,
@@ -121,12 +123,12 @@ function CardEditor:rebuild()
         table.insert(content,HGroup:new{align='center',toggle,HSpan:new{width=gap},
             KanbanButton:new{text=_('Edit'),width=action_width,bordersize=0,text_font_size=16,show_parent=self,
                 callback=function() self:promptChecklist(n) end},HSpan:new{width=gap},
-            KanbanButton:new{text=_('×'),width=action_width,bordersize=0,show_parent=self,
+            KanbanButton:new{icon='close',width=action_width,bordersize=0,show_parent=self,
                 callback=function() table.remove(self.checklist,n);self:refresh() end},
         })
     end
     self.add_checklist_button=KanbanButton:new{
-        text=_('+ Add checklist item'),width=width,bordersize=Style.border,background=Style.surface,
+        text=_('Add checklist item'),leading_icon='plus',width=width,bordersize=Style.border,background=Style.surface,
         text_font_face='cfont',text_font_size=18,show_parent=self,
         callback=function() self:promptChecklist() end,
     }

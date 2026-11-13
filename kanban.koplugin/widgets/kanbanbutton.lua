@@ -1,9 +1,12 @@
 -- Custom e-ink friendly button built from KOReader's low-level widget primitives.
 local Blitbuffer = require('ffi/blitbuffer')
 local CenterContainer = require('ui/widget/container/centercontainer')
+local CheckMark = require('ui/widget/checkmark')
 local FrameContainer = require('ui/widget/container/framecontainer')
 local Geom = require('ui/geometry')
 local GestureRange = require('ui/gesturerange')
+local HorizontalGroup = require('ui/widget/horizontalgroup')
+local HorizontalSpan = require('ui/widget/horizontalspan')
 local IconWidget = require('ui/widget/iconwidget')
 local InputContainer = require('ui/widget/container/inputcontainer')
 local LeftContainer = require('ui/widget/container/leftcontainer')
@@ -16,7 +19,11 @@ local KanbanButton = InputContainer:extend{
     text = nil,
     text_func = nil,
     checked_func = nil,
-    checkmark = " ✓",
+    leading_widget = nil,
+    leading_icon = nil,
+    leading_icon_width = nil,
+    leading_icon_height = nil,
+    leading_spacing = nil,
     icon = nil,
     icon_width = nil,
     icon_height = nil,
@@ -65,13 +72,26 @@ function KanbanButton:init()
     self._base_enabled = self.enabled
 
     local display_text = self.text or ""
-    if self.checked_func and self:checked_func() then
-        display_text = display_text .. self.checkmark
-    end
 
     local text_color = self.enabled and (self.preselect and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK)
         or Style.palette.disabled
     local face = Font:getFace(self.text_font_face, self.text_font_size)
+    if self.leading_widget == nil and self.checked_func then
+        self.leading_widget = CheckMark:new{
+            checked = self.checked_func() == true,
+            face = face,
+            enabled = self.enabled,
+        }
+    elseif self.leading_widget == nil and self.leading_icon then
+        self.leading_widget = IconWidget:new{
+            icon = self.leading_icon,
+            width = self.leading_icon_width or Style.icon.size,
+            height = self.leading_icon_height or Style.icon.size,
+            dim = not self.enabled,
+            invert = self.preselect,
+        }
+    end
+    local leading_width = self.leading_widget and (self.leading_widget:getSize().w + (self.leading_spacing or Style.space.xs)) or 0
 
     local content_width = self.width and self.width - 2 * (self.margin + self.bordersize + self.padding_h) or nil
     local content_height = self.height and self.height - 2 * (self.margin + self.bordersize + self.padding_v) or nil
@@ -98,14 +118,23 @@ function KanbanButton:init()
             face = face,
             bold = self.text_font_bold,
             fgcolor = text_color,
-            max_width = content_width,
+            max_width = content_width and (content_width - leading_width) or nil,
             padding = 0,
         }
+        local label = self.label_widget
+        if self.leading_widget then
+            label = HorizontalGroup:new{
+                align = "center",
+                self.leading_widget,
+                HorizontalSpan:new{ width = self.leading_spacing or Style.space.xs },
+                self.label_widget,
+            }
+        end
         local align_container = self.align == "left" and LeftContainer or CenterContainer
         content = align_container:new{
-            dimen = Geom:new{ w = content_width or self.label_widget:getSize().w,
-                              h = content_height or self.label_widget:getSize().h },
-            self.label_widget,
+            dimen = Geom:new{ w = content_width or label:getSize().w,
+                              h = content_height or label:getSize().h },
+            label,
         }
     end
 
@@ -138,11 +167,7 @@ function KanbanButton:init()
 end
 
 function KanbanButton:getDisplayText()
-    local display_text = self.text or ""
-    if self.checked_func and self:checked_func() then
-        display_text = display_text .. self.checkmark
-    end
-    return display_text
+    return self.text or ""
 end
 
 function KanbanButton:enableDisable(enabled)
@@ -150,6 +175,9 @@ function KanbanButton:enableDisable(enabled)
     if self.label_widget then
         self.label_widget.fgcolor = self.enabled and (self.preselect and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK) or Style.palette.disabled
         if self.label_widget.update then self.label_widget:update() end
+    end
+    if self.leading_widget and self.leading_widget.dim ~= nil then
+        self.leading_widget.dim = not self.enabled
     end
 end
 

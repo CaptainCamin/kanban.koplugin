@@ -95,7 +95,8 @@ function ActionPanel:init()
         height_overflow_show_ellipsis=true,
     })
     local close = Button:new{
-        text=_('×'), width=Screen:scaleBySize(32), height=Screen:scaleBySize(36),
+        icon='close', icon_width=Style.icon.size, icon_height=Style.icon.size,
+        width=Screen:scaleBySize(32), height=Screen:scaleBySize(36),
         bordersize=0, padding=0, text_font_size=26, show_parent=self,
         callback=function() self:onClose() end,
     }

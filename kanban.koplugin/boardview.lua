@@ -111,7 +111,7 @@ local function cardMarkerText(card)
                 done = done + 1
             end
         end
-        table.insert(markers, T(_("☑ %1/%2"), done, #checklist))
+        table.insert(markers, T(_("Done %1/%2"), done, #checklist))
     end
     local days = Model.daysInColumn(card.moved, os.time)
     if days then
@@ -173,8 +173,7 @@ function BoardView:layout(changed_columns)
     self.title_bar = changed_columns and self.title_bar or KanbanTitleBar:new{
         width = self.dimen.w,
         align = "center",
-        -- The title is the board switcher: the ▼ marks it as tappable.
-        title = board and (board.name .. " ▼") or _("Kanban board"),
+        title = board and board.name or _("Kanban board"),
         title_face = Font:getFace("smallinfofontbold"),
         with_bottom_line = true,
         bottom_line_color = Blitbuffer.COLOR_BLACK,
@@ -220,7 +219,7 @@ function BoardView:layout(changed_columns)
             callback=function() CardDialog.filterLabels(self) end,
         }
         self.filter_clear_button = KanbanButton:new{
-            text=_("× Clear"),width=clear_width,height=strip_height-2*Size.padding.small,padding_v=Size.padding.small,
+            text=_("Clear"),width=clear_width,height=strip_height-2*Size.padding.small,padding_v=Size.padding.small,
             text_font_face="cfont",text_font_size=16,bordersize=0,show_parent=self,
             callback=function()
                 self.label_filter=nil;self.card_start={};self:refresh()
@@ -470,7 +469,7 @@ function BoardView:buildColumns(board, first, last, body_h, changed_columns)
                     + 2 * (card_border + card_pad)
             end
             local add_card_lines, add_card_glyph_extra_height = measureTitleLines(
-                _("+ Add card"), text_w, title_face)
+                _("Add card"), text_w, title_face)
             local add_card_height = add_card_lines * line_h + add_card_glyph_extra_height
                 + 2 * (card_border + card_pad)
             -- Reserve the same creation control on every page, so capturing a
@@ -656,7 +655,7 @@ function BoardView:buildColumns(board, first, last, body_h, changed_columns)
                     padding = card_pad,
                     background = Style.surface,
                     TextBoxWidget:new{
-                        text = _("+ Add card"),
+                        text = _("Add card"),
                         bgcolor = Blitbuffer.COLOR_WHITE,
                         face = title_face,
                         width = text_w,

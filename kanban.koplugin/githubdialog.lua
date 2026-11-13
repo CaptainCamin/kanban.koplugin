@@ -44,7 +44,7 @@ local function list(title, items, footer, page)
     local buttons = {}
     for index=(page-1)*5+1, math.min(page*5, #items) do
         local item = items[index]
-        buttons[#buttons+1] = {{text=item.text, callback=function()
+        buttons[#buttons+1] = {{text=item.text, checked_func=item.checked_func, callback=function()
             if not item.keep_open then UI:close(dialog) end
             item.callback()
         end}}
@@ -81,7 +81,10 @@ local function chooseLabels(view)
     for label_index, label in ipairs(board.labels or {}) do
         local id, name = label.id, label.name
         local selected = (config.upload_labels or {})[id]
-        items[#items+1] = {text=(selected and "☑ " or "☐ ") .. name, callback=function()
+        items[#items+1] = {text=name, checked_func=function()
+            local upload = ((view:getBoard().github or {}).upload_labels) or {}
+            return upload[id] == true
+        end, callback=function()
             view:commit(function()
                 board.github = board.github or {}
                 board.github.upload_labels = board.github.upload_labels or {}
